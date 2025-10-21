@@ -85,13 +85,13 @@ function buildSignAttemptsForDaily(
   const allowFallback = !!opts?.allowTrueSignFallback;
 
   const list: string[] = [];
-  if (primaryWithCusp) list.push(primaryWithCusp);                   // en–dash + "Cusp"
+  if (primaryWithCusp) list.push(primaryWithCusp);                    // en–dash + "Cusp"
   if (primaryWithCusp) list.push(primaryWithCusp.replace(/–/g, '-')); // hyphen + "Cusp"
-  if (primaryNoCusp) list.push(primaryNoCusp);                        // en–dash no cusp
+  if (primaryNoCusp) list.push(primaryNoCusp);                         // en–dash no cusp
   if (primaryNoCusp) list.push(primaryNoCusp.replace(/–/g, '-'));     // hyphen no cusp
 
   if (!isCusp || allowFallback) {
-    for (const p of parts) if (p) list.push(p);                      // fallback to each sign if allowed
+    for (const p of parts) if (p) list.push(p);                       // fallback to each sign if allowed
   }
   return [...new Set(list)].filter(Boolean);
 }
@@ -164,13 +164,16 @@ function buildDailyAnchors(d = new Date()): string[] {
 }
 
 // ----- Cache helpers -----
+// BUMP VERSION to invalidate old localStorage keys that caused stale content.
+const CACHE_VERSION = 'v2';
+
 function cacheKeyDaily(
   userId: string | undefined,
   sign: string,
   hemi: 'Northern' | 'Southern',
   ymd: string
 ) {
-  return `daily:${userId ?? 'anon'}:${sign}:${hemi}:${ymd}`;
+  return `${CACHE_VERSION}:daily:${userId ?? 'anon'}:${sign}:${hemi}:${ymd}`;
 }
 function getFromCache<T = unknown>(key: string): T | null {
   try {
@@ -287,13 +290,13 @@ export async function getDailyForecast(
     });
   }
 
-  // Cache first
+  // Cache first (unless disabled)
   if (opts?.useCache !== false) {
     for (const dateStr of anchors) {
       for (const s of signAttempts) {
         const key = cacheKeyDaily(userId, s, hemi, dateStr);
         const cached = getFromCache<DailyRow>(key);
-        if (cached && cached.date === dateStr && cached.hemisphere === hemi && cached.sign === cached.sign) {
+        if (cached && cached.date === dateStr && cached.hemisphere === hemi && cached.sign === s) {
           if (debug) console.log('💾 [daily] cache hit', { key, sign: s, hemi, date: dateStr, source: cached.__source_table__ });
           return cached;
         }
@@ -365,8 +368,8 @@ export async function getAccessibleHoroscope(user: any, opts?: {
   const row = await getDailyForecast(signLabel, hemisphere, {
     userId: user?.id || user?.email,
     forceDate: opts?.forceDate,
-    useCache: opts?.useCache,
-    debug,
+    useCache: false,     // TEMP: force fresh DB read so we bypass stale localStorage
+    debug: true,         // TEMP: keep logs visible while verifying
     allowTrueSignFallback: !isCuspInput ? true : false,
   });
 
