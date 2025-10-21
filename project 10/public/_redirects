@@ -11,4 +11,4 @@ http://www.astrocusp.com.au/* https://www.astrocusp.com.au/:splat 301!
 /assets/* /assets/:splat 200
 
 # SPA fallback for React Router - CRITICAL: preserve query strings for password reset
-/*  /index.html  200!
+/*  /index.html  200! 
