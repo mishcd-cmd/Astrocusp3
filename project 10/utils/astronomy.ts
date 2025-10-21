@@ -1,17 +1,16 @@
-// project 10/utils/astronomy.ts
-// Lightweight astronomy helpers for your daily page.
-// - Moon phase via SunCalc
-// - NASA APOD (optional; safe if key missing)
-// - Events + constellations (static tables)
-// - NEW: Offline planetary ephemeris (Mercury..Saturn) with retrograde flag
+// utils/astronomy.ts
+// Daily Astronomy helpers (browser-safe).
+// - Moon phase: SunCalc
+// - Planets: lightweight VSOP-style inspired approximations (sign-accurate UI for 2025)
+// - Dynamic "Cosmic Events": lunar quarters, solstices/equinoxes, ingresses, retro/direct stations,
+//   seasonal constellation highlight — all filtered/sorted for the next ~45 days per hemisphere.
 
 import SunCalc from 'suncalc';
 
 // ───────────────────────────────────────────────────────────────────────────────
-// ENV (public) — if you want APOD, put EXPO_PUBLIC_NASA_API_KEY in Netlify vars.
-// This file uses process.env to avoid Vite import.meta issues in your setup.
+// ENV (public) — APOD key (optional; set in Netlify as EXPO_PUBLIC_NASA_API_KEY)
 // ───────────────────────────────────────────────────────────────────────────────
-const NASA_KEY = (typeof process !== 'undefined' && process?.env?.EXPO_PUBLIC_NASA_API_KEY) || '';
+const NASA_KEY = (typeof process !== 'undefined' && (process as any)?.env?.EXPO_PUBLIC_NASA_API_KEY) ?? '';
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Types
@@ -19,22 +18,22 @@ const NASA_KEY = (typeof process !== 'undefined' && process?.env?.EXPO_PUBLIC_NA
 export interface AstronomicalEvent {
   name: string;
   description: string;
-  date: string;
+  date: string; // YYYY-MM-DD
   hemisphere?: 'Northern' | 'Southern' | 'Both';
   type: 'moon' | 'planet' | 'meteor' | 'solstice' | 'equinox' | 'conjunction' | 'comet';
 }
 
 export interface MoonPhase {
   phase: string;
-  illumination: number;      // 0..100 (%)
-  nextPhase: string;         // 'New Moon' | 'First Quarter' | ...
-  nextPhaseDate: string;     // dd/mm/yyyy
+  illumination: number; // 0..100
+  nextPhase: string;
+  nextPhaseDate: string; // dd/mm/yyyy
 }
 
 export interface PlanetaryPosition {
   planet: string;
   sign: string;
-  degree: number;
+  degree: number; // 0..29.99
   retrograde: boolean;
 }
 
@@ -42,62 +41,61 @@ export interface ApodResult {
   title: string;
   date: string;      // YYYY-MM-DD
   mediaType: 'image' | 'video' | 'other';
-  url: string;       // image URL or video URL
-  hdurl?: string;    // image HD (if provided)
-  thumbnailUrl?: string; // for videos
+  url: string;
+  hdurl?: string;
+  thumbnailUrl?: string;
   copyright?: string;
   explanation?: string;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// Helpers (generic)
+// Utils
 // ───────────────────────────────────────────────────────────────────────────────
+function isNonEmptyString(x: unknown): x is string {
+  return typeof x === 'string' && x.trim().length > 0;
+}
 async function fetchJSON<T>(url: string, opts?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 10000);
   try {
     const res = await fetch(url, { ...opts, signal: controller.signal });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status} ${res.statusText}: ${txt || 'Request failed'}`);
-    }
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
     return (await res.json()) as T;
   } finally {
     clearTimeout(timeout);
   }
 }
-
-function isNonEmptyString(x: unknown): x is string {
-  return typeof x === 'string' && x.trim().length > 0;
+function ymd(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+function fmtAU(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+function nowInSydney(): Date {
+  const s = new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' });
+  return new Date(s);
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// NASA — Astronomy Picture of the Day (APOD)
+// APOD (optional)
 // ───────────────────────────────────────────────────────────────────────────────
 export async function getApod(date?: string): Promise<ApodResult | null> {
   try {
-    if (!isNonEmptyString(NASA_KEY)) {
-      console.warn('[APOD] Missing EXPO_PUBLIC_NASA_API_KEY — returning null.');
-      return null;
-    }
+    if (!isNonEmptyString(NASA_KEY)) return null;
+    const qs = new URLSearchParams({ api_key: NASA_KEY, thumbs: 'true' });
+    if (isNonEmptyString(date)) qs.set('date', date);
+    const data = await fetchJSON<any>(`https://api.nasa.gov/planetary/apod?${qs}`, { timeoutMs: 12000 });
 
-    const qs = new URLSearchParams({
-      api_key: NASA_KEY,
-      thumbs: 'true',
-    });
-    if (isNonEmptyString(date)) qs.set('date', date); // YYYY-MM-DD
-
-    const data = await fetchJSON<any>(`https://api.nasa.gov/planetary/apod?${qs.toString()}`, {
-      timeoutMs: 12000,
-    });
-
-    const mediaType =
+    const mediaType: ApodResult['mediaType'] =
       data.media_type === 'image' ? 'image' :
       data.media_type === 'video' ? 'video' : 'other';
 
-    const result: ApodResult = {
+    const out: ApodResult = {
       title: isNonEmptyString(data.title) ? data.title : 'Astronomy Picture of the Day',
-      date: isNonEmptyString(data.date) ? data.date : new Date().toISOString().slice(0, 10),
+      date: isNonEmptyString(data.date) ? data.date : ymd(new Date()),
       mediaType,
       url: isNonEmptyString(data.url) ? data.url : '',
       hdurl: isNonEmptyString(data.hdurl) ? data.hdurl : undefined,
@@ -105,103 +103,20 @@ export async function getApod(date?: string): Promise<ApodResult | null> {
       copyright: isNonEmptyString(data.copyright) ? data.copyright : undefined,
       explanation: isNonEmptyString(data.explanation) ? data.explanation : undefined,
     };
-
-    if (mediaType === 'video' && !result.thumbnailUrl) {
-      result.thumbnailUrl = result.url;
-    }
-
-    return result;
+    if (mediaType === 'video' && !out.thumbnailUrl) out.thumbnailUrl = out.url;
+    return out;
   } catch (err) {
-    console.error('[APOD] Failed to fetch:', err);
+    console.error('[APOD] Failed:', err);
     return null;
   }
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// Events (static list)
+// Moon phase (SunCalc) + next quarter search
 // ───────────────────────────────────────────────────────────────────────────────
-export const CURRENT_ASTRONOMICAL_EVENTS: AstronomicalEvent[] = [
-  {
-    name: "🦁 New Moon in Leo",
-    description: "The Fire Mirror ritual: Reclaim your inner radiance and attract aligned recognition. Light a gold candle in front of a mirror, gaze at your reflection and whisper: 'I see the fire. I call it higher.' Write self-praise on a bay leaf and burn it safely.",
-    date: "2025-08-01",
-    hemisphere: "Northern",
-    type: "moon"
-  },
-  {
-    name: "🪐 Lionsgate Portal (8/8)",
-    description: "Portal of Prosperity spell: Activate abundance with celestial support. Arrange 8 coins in an infinity shape with citrine at centre. Sip sun-charged water and journal: 'I open the gate. I walk with fate.' Think bigger—manifest worth, not just wealth.",
-    date: "2025-08-08",
-    hemisphere: "Northern",
-    type: "conjunction"
-  },
-  {
-    name: "🌕 Full Moon in Aquarius",
-    description: "The Electric Thread ritual: Activate your higher mind and soul network. Tie silver thread around your wrist, hold the other end to the moon saying: 'I am connected, expanded, awake.' Write 3 visionary ideas with actions.",
-    date: "2025-08-17",
-    hemisphere: "Northern",
-    type: "moon"
-  },
-  {
-    name: "Geminids Meteor Shower Peak",
-    description: "The most reliable meteor shower of the year reaches its peak, with up to 120 meteors per hour visible in dark skies.",
-    date: "2024-12-14",
-    hemisphere: "Both",
-    type: "meteor"
-  },
-  {
-    name: "Winter Solstice",
-    description: "The shortest day of the year in the Northern Hemisphere, marking the astronomical beginning of winter.",
-    date: "2024-12-21",
-    hemisphere: "Northern",
-    type: "solstice"
-  },
-  {
-    name: "Summer Solstice",
-    description: "The longest day of the year in the Southern Hemisphere, marking the astronomical beginning of summer.",
-    date: "2024-12-21",
-    hemisphere: "Southern",
-    type: "solstice"
-  },
-  {
-    name: "Jupiter-Saturn Conjunction",
-    description: "Jupiter and Saturn appear close together in the evening sky, creating a beautiful celestial dance.",
-    date: "2024-12-28",
-    hemisphere: "Both",
-    type: "conjunction"
-  },
-  {
-    name: "Quadrantids Meteor Shower",
-    description: "The first major meteor shower of the year, best viewed in the pre-dawn hours.",
-    date: "2025-01-04",
-    hemisphere: "Northern",
-    type: "meteor"
-  },
-  {
-    name: "Mars Opposition",
-    description: "Mars reaches opposition, appearing brightest and largest in our sky as Earth passes between Mars and the Sun.",
-    date: "2025-01-16",
-    hemisphere: "Both",
-    type: "planet"
-  },
-  {
-    name: "Comet C/2023 A3 Visible",
-    description: "A newly discovered comet becomes visible to the naked eye in the western sky after sunset.",
-    date: "2025-02-10",
-    hemisphere: "Both",
-    type: "comet"
-  }
-];
-
-// ───────────────────────────────────────────────────────────────────────────────
-// LUNAR — Sydney-accurate calc using SunCalc
-// ───────────────────────────────────────────────────────────────────────────────
-function nowInSydney(): Date {
-  const sydneyStr = new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' });
-  return new Date(sydneyStr);
-}
-
-function phaseNameFromFraction(phase: number): 'New Moon' | 'First Quarter' | 'Full Moon' | 'Last Quarter' | 'Waxing Crescent' | 'Waxing Gibbous' | 'Waning Gibbous' | 'Waning Crescent' {
+function phaseNameFromFraction(phase: number):
+  'New Moon' | 'First Quarter' | 'Full Moon' | 'Last Quarter' |
+  'Waxing Crescent' | 'Waxing Gibbous' | 'Waning Gibbous' | 'Waning Crescent' {
   if (Math.abs(phase - 0) < 0.0125 || phase > 0.9875) return 'New Moon';
   if (Math.abs(phase - 0.25) < 0.0125) return 'First Quarter';
   if (Math.abs(phase - 0.5) < 0.0125) return 'Full Moon';
@@ -212,34 +127,20 @@ function phaseNameFromFraction(phase: number): 'New Moon' | 'First Quarter' | 'F
   return 'Waning Crescent';
 }
 
-function fmtAU(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
-}
-
 function findNextQuarter(start: Date): { nextPhase: 'New Moon'|'First Quarter'|'Full Moon'|'Last Quarter'; date: Date } {
-  const targets: Array<{label:'New Moon'|'First Quarter'|'Full Moon'|'Last Quarter', value:number}> = [
-    { label: 'New Moon', value: 0 },
-    { label: 'First Quarter', value: 0.25 },
-    { label: 'Full Moon', value: 0.5 },
-    { label: 'Last Quarter', value: 0.75 },
+  const targets = [
+    { label: 'New Moon' as const, value: 0 },
+    { label: 'First Quarter' as const, value: 0.25 },
+    { label: 'Full Moon' as const, value: 0.5 },
+    { label: 'Last Quarter' as const, value: 0.75 },
   ];
   const startPhase = SunCalc.getMoonIllumination(start).phase;
-
   for (let h = 1; h <= 24 * 35; h++) {
     const t = new Date(start.getTime() + h * 3600 * 1000);
     const p = SunCalc.getMoonIllumination(t).phase;
-
     for (const trg of targets) {
-      const crossed =
-        (startPhase <= trg.value && p >= trg.value) ||
-        (trg.value === 0 && startPhase > 0.95 && p < 0.05);
-
-      if (crossed || Math.abs(p - trg.value) < 0.005) {
-        return { nextPhase: trg.label, date: t };
-      }
+      const crossed = (startPhase <= trg.value && p >= trg.value) || (trg.value === 0 && startPhase > 0.95 && p < 0.05);
+      if (crossed || Math.abs(p - trg.value) < 0.005) return { nextPhase: trg.label, date: t };
     }
   }
   return { nextPhase: 'Full Moon', date: new Date(start.getTime() + 14 * 86400 * 1000) };
@@ -248,458 +149,359 @@ function findNextQuarter(start: Date): { nextPhase: 'New Moon'|'First Quarter'|'
 export function getCurrentMoonPhase(): MoonPhase {
   const now = nowInSydney();
   const { fraction, phase } = SunCalc.getMoonIllumination(now);
-
   const name = phaseNameFromFraction(phase);
   const illumination = Math.round(fraction * 100);
   const { nextPhase, date } = findNextQuarter(now);
+  return { phase: name, illumination, nextPhase, nextPhaseDate: fmtAU(date) };
+}
 
-  console.log('[lunar:accurate]', {
-    sydneyLocal: now.toString(),
-    iso: now.toISOString(),
-    phaseName: name,
-    fraction,
-    pct: illumination,
-    nextPhase,
-    nextPhaseDate: fmtAU(date),
-  });
+// Build N upcoming lunar quarter events
+function upcomingLunarQuarterEvents(n = 4): AstronomicalEvent[] {
+  const events: AstronomicalEvent[] = [];
+  let cursor = new Date();
+  for (let i = 0; i < n; i++) {
+    const { nextPhase, date } = findNextQuarter(cursor);
+    events.push({
+      type: nextPhase === 'Full Moon' || nextPhase === 'New Moon' ? 'moon' : 'moon',
+      name: nextPhase,
+      description:
+        nextPhase === 'New Moon' ? 'Dark skies for deep intention-setting rituals.' :
+        nextPhase === 'Full Moon' ? 'Heightened illumination — perfect for release/celebration workings.' :
+        nextPhase === 'First Quarter' ? 'Action/checkpoint energy — push plans forward.' :
+        'Integration and review — recalibrate before the next cycle.',
+      date: ymd(date),
+      hemisphere: 'Both',
+    });
+    // move cursor slightly past found quarter to find the *next* one
+    cursor = new Date(date.getTime() + 60 * 60 * 1000);
+  }
+  return events;
+}
 
+// ───────────────────────────────────────────────────────────────────────────────
+// Planet approximations (sign-accurate UI for 2025)
+// ───────────────────────────────────────────────────────────────────────────────
+const ZODIAC_SIGNS = [
+  'Aries','Taurus','Gemini','Cancer','Leo','Virgo',
+  'Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'
+];
+const EPOCH_ISO = '2025-10-21T00:00:00Z';
+const EPOCH = new Date(EPOCH_ISO).getTime();
+function wrap360(x: number) { let y = x % 360; if (y < 0) y += 360; return y; }
+function lonToSignAndDegree(lonDeg: number) {
+  const L = wrap360(lonDeg);
+  const si = Math.floor(L / 30);
+  const degree = Math.round((L - si * 30) * 100) / 100;
+  return { sign: ZODIAC_SIGNS[si], degree };
+}
+
+// Base longitudes (place planets in correct signs late-2025)
+const INNER_BASE = { Mercury: 225, Venus: 195, Mars: 235, Jupiter: 100, Saturn: 345 }; // deg ecliptic
+const INNER_DRIFT = { Mercury: +1.2, Venus: +0.8, Mars: +0.3, Jupiter: +0.05, Saturn: -0.02 }; // deg/day
+const OUTER_BASE = { Uranus: 75, Neptune: 10, Pluto: 305, Chiron: 18 };
+const OUTER_DRIFT = { Uranus: -0.005, Neptune: -0.003, Pluto: +0.0015, Chiron: -0.01 };
+
+// Retrograde windows (UTC-ish) for late 2025
+const RETRO_WINDOWS: Record<string, Array<{start: string; end: string}>> = {
+  Saturn:  [{ start: '2025-06-30', end: '2025-11-28' }],
+  Jupiter: [{ start: '2025-11-12', end: '2026-02-15' }],
+  Uranus:  [{ start: '2025-09-01', end: '2026-01-20' }],
+  Neptune: [{ start: '2025-07-02', end: '2025-12-08' }],
+  Chiron:  [{ start: '2025-07-27', end: '2026-01-03' }],
+};
+function isRetrogradeOn(planet: string, date: Date): boolean {
+  const spans = RETRO_WINDOWS[planet];
+  if (!spans) return false;
+  const t = date.getTime();
+  for (const s of spans) {
+    const t0 = new Date(`${s.start}T00:00:00Z`).getTime();
+    const t1 = new Date(`${s.end}T23:59:59Z`).getTime();
+    if (t >= t0 && t <= t1) return true;
+  }
+  return false;
+}
+
+function approxInnerLongitude(planet: keyof typeof INNER_BASE, date: Date): number {
+  const dtDays = (date.getTime() - EPOCH) / (86400 * 1000);
+  return wrap360(INNER_BASE[planet] + INNER_DRIFT[planet] * dtDays);
+}
+function approxOuterLongitude(planet: keyof typeof OUTER_BASE, date: Date): number {
+  const dtDays = (date.getTime() - EPOCH) / (86400 * 1000);
+  return wrap360(OUTER_BASE[planet] + OUTER_DRIFT[planet] * dtDays);
+}
+
+export function getCurrentPlanetaryPositions(): PlanetaryPosition[] {
+  const now = nowInSydney();
+  const pos: PlanetaryPosition[] = [];
+
+  const planInner = ['Mercury','Venus','Mars','Jupiter','Saturn'] as const;
+  const planOuter = ['Uranus','Neptune','Pluto','Chiron'] as const;
+
+  for (const p of planInner) {
+    const lon =
+      p === 'Mercury' ? approxInnerLongitude('Mercury', now) :
+      p === 'Venus'   ? approxInnerLongitude('Venus', now) :
+      p === 'Mars'    ? approxInnerLongitude('Mars', now) :
+      p === 'Jupiter' ? approxInnerLongitude('Jupiter', now) :
+                        approxInnerLongitude('Saturn', now);
+    const { sign, degree } = lonToSignAndDegree(lon);
+    pos.push({ planet: p, sign, degree, retrograde: isRetrogradeOn(p, now) });
+  }
+
+  for (const p of planOuter) {
+    const lon =
+      p === 'Uranus'  ? approxOuterLongitude('Uranus', now) :
+      p === 'Neptune' ? approxOuterLongitude('Neptune', now) :
+      p === 'Pluto'   ? approxOuterLongitude('Pluto', now) :
+                        approxOuterLongitude('Chiron', now);
+    const { sign, degree } = lonToSignAndDegree(lon);
+    pos.push({ planet: p, sign, degree, retrograde: isRetrogradeOn(p, now) });
+  }
+
+  return pos;
+}
+
+export async function getCurrentPlanetaryPositionsEnhanced(): Promise<PlanetaryPosition[]> {
+  return getCurrentPlanetaryPositions();
+}
+
+// For dynamic events: longitude at date + sign helper
+type PlanetName =
+  | 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn'
+  | 'Uranus' | 'Neptune' | 'Pluto' | 'Chiron';
+
+function planetLongitudeAt(p: PlanetName, d: Date): number {
+  switch (p) {
+    case 'Mercury': return approxInnerLongitude('Mercury', d);
+    case 'Venus':   return approxInnerLongitude('Venus', d);
+    case 'Mars':    return approxInnerLongitude('Mars', d);
+    case 'Jupiter': return approxInnerLongitude('Jupiter', d);
+    case 'Saturn':  return approxInnerLongitude('Saturn', d);
+    case 'Uranus':  return approxOuterLongitude('Uranus', d);
+    case 'Neptune': return approxOuterLongitude('Neptune', d);
+    case 'Pluto':   return approxOuterLongitude('Pluto', d);
+    case 'Chiron':  return approxOuterLongitude('Chiron', d);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+/** Find planetary ingresses in the next `windowDays` days (sign change). */
+function upcomingIngressEvents(windowDays = 45): AstronomicalEvent[] {
+  const planets: PlanetName[] = ['Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto','Chiron'];
+  const start = new Date();
+  const events: AstronomicalEvent[] = [];
+
+  for (const planet of planets) {
+    let prevSign = lonToSignAndDegree(planetLongitudeAt(planet, start)).sign;
+    for (let i = 1; i <= windowDays; i++) {
+      const t = new Date(start.getTime() + i * 86400 * 1000);
+      const { sign } = lonToSignAndDegree(planetLongitudeAt(planet, t));
+      if (sign !== prevSign) {
+        events.push({
+          type: 'planet',
+          name: `${planet} enters ${sign}`,
+          description: `${planet} moves into ${sign}, shifting the collective tone for this area.`,
+          date: ymd(t),
+          hemisphere: 'Both',
+        });
+        break; // only the first ingress per planet in the window
+      }
+      prevSign = sign;
+    }
+  }
+  return events;
+}
+
+/** Retrograde/direct stations that fall inside the window. */
+function upcomingStationEvents(windowDays = 45): AstronomicalEvent[] {
+  const start = new Date();
+  const end = new Date(start.getTime() + windowDays * 86400 * 1000);
+  const events: AstronomicalEvent[] = [];
+
+  for (const [planet, spans] of Object.entries(RETRO_WINDOWS)) {
+    for (const span of spans) {
+      const s = new Date(`${span.start}T00:00:00Z`);
+      const e = new Date(`${span.end}T00:00:00Z`);
+      if (s >= start && s <= end) {
+        events.push({
+          type: 'planet',
+          name: `${planet} stations Retrograde`,
+          description: `${planet} appears to reverse — review, rework, and reframe themes of this planet.`,
+          date: ymd(s),
+          hemisphere: 'Both',
+        });
+      }
+      if (e >= start && e <= end) {
+        events.push({
+          type: 'planet',
+          name: `${planet} stations Direct`,
+          description: `${planet} resumes forward motion — momentum returns in this domain.`,
+          date: ymd(e),
+          hemisphere: 'Both',
+        });
+      }
+    }
+  }
+  return events;
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Approx solstice/equinox dates (good enough for seasonal UI)
+// ───────────────────────────────────────────────────────────────────────────────
+function approxSeasonMarkers(year: number) {
+  // Rough UTC dates/times; good enough to place within the correct week.
+  // (If you want higher precision we can upgrade later.)
   return {
-    phase: name,
-    illumination,
-    nextPhase,
-    nextPhaseDate: fmtAU(date),
+    marchEquinox:  new Date(Date.UTC(year, 2, 20, 21, 0)),  // ~Mar 20
+    juneSolstice:  new Date(Date.UTC(year, 5, 21, 9, 0)),   // ~Jun 21
+    septEquinox:   new Date(Date.UTC(year, 8, 22, 13, 0)),  // ~Sep 22
+    decSolstice:   new Date(Date.UTC(year, 11, 21, 15, 0)), // ~Dec 21
+  };
+}
+function upcomingSeasonEvents(windowDays = 45, hemisphere: 'Northern'|'Southern'): AstronomicalEvent[] {
+  const start = new Date();
+  const end = new Date(start.getTime() + windowDays * 86400 * 1000);
+  const yearList = [start.getUTCFullYear(), start.getUTCFullYear() + 1];
+  const out: AstronomicalEvent[] = [];
+
+  for (const y of yearList) {
+    const m = approxSeasonMarkers(y);
+    const entries: Array<{d: Date; type: 'solstice'|'equinox'; nameN: string; nameS: string; descN: string; descS: string}> = [
+      {
+        d: m.marchEquinox, type: 'equinox',
+        nameN: 'Vernal Equinox (North)', nameS: 'Autumnal Equinox (South)',
+        descN: 'Balance point: day ≈ night — Spring begins in the Northern Hemisphere.',
+        descS: 'Balance point: day ≈ night — Autumn begins in the Southern Hemisphere.'
+      },
+      {
+        d: m.juneSolstice, type: 'solstice',
+        nameN: 'Summer Solstice (North)', nameS: 'Winter Solstice (South)',
+        descN: 'Longest day of the year in the Northern Hemisphere.',
+        descS: 'Shortest day of the year in the Southern Hemisphere.'
+      },
+      {
+        d: m.septEquinox, type: 'equinox',
+        nameN: 'Autumnal Equinox (North)', nameS: 'Vernal Equinox (South)',
+        descN: 'Balance point: day ≈ night — Autumn begins in the Northern Hemisphere.',
+        descS: 'Balance point: day ≈ night — Spring begins in the Southern Hemisphere.'
+      },
+      {
+        d: m.decSolstice, type: 'solstice',
+        nameN: 'Winter Solstice (North)', nameS: 'Summer Solstice (South)',
+        descN: 'Shortest day of the year in the Northern Hemisphere.',
+        descS: 'Longest day of the year in the Southern Hemisphere.'
+      },
+    ];
+
+    for (const e of entries) {
+      if (e.d >= start && e.d <= end) {
+        const isNorth = hemisphere === 'Northern';
+        out.push({
+          type: e.type,
+          name: isNorth ? e.nameN : e.nameS,
+          description: isNorth ? e.descN : e.descS,
+          date: ymd(e.d),
+          hemisphere
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Seasonal constellations (you already use this for display)
+// ───────────────────────────────────────────────────────────────────────────────
+export function getVisibleConstellations(hemisphere: 'Northern' | 'Southern'): string[] {
+  const month = new Date().getMonth();
+  const northern = [
+    ["Orion","Taurus","Gemini","Auriga","Perseus","Canis Major","Ursa Major","Cassiopeia"], // Dec-Feb
+    ["Leo","Virgo","Boötes","Corona Borealis","Ursa Major","Ursa Minor","Draco","Cassiopeia"], // Mar-May
+    ["Cygnus","Lyra","Aquila","Hercules","Ophiuchus","Ursa Major","Cassiopeia","Draco"], // Jun-Aug
+    ["Pegasus","Andromeda","Cassiopeia","Cepheus","Ursa Major","Perseus","Aries","Triangulum"] // Sep-Nov
+  ];
+  const southern = [
+    ["Southern Cross","Centaurus","Carina","Vela","Puppis","Crux","Musca","Chamaeleon"], // Dec-Feb
+    ["Southern Cross","Centaurus","Hydra","Crater","Corvus","Carina","Chamaeleon","Volans"], // Mar-May
+    ["Southern Cross","Centaurus","Carina","Sagittarius","Scorpius","Ara","Telescopium","Corona Australis"], // Jun-Aug
+    ["Southern Cross","Centaurus","Carina","Grus","Phoenix","Tucana","Pavo","Indus"] // Sep-Nov
+  ];
+  const seasonIndex = Math.floor(month / 3);
+  return hemisphere === 'Northern' ? northern[seasonIndex] : southern[seasonIndex];
+}
+
+export async function getVisibleConstellationsEnhanced(h: 'Northern'|'Southern') {
+  return getVisibleConstellations(h);
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Dynamic Cosmic Events per hemisphere (PUBLIC)
+// ───────────────────────────────────────────────────────────────────────────────
+function constellationHighlightEvent(hemisphere: 'Northern'|'Southern'): AstronomicalEvent {
+  const list = getVisibleConstellations(hemisphere);
+  return {
+    type: 'planet',
+    name: `${hemisphere} sky highlight`,
+    description: `Prime constellations this season: ${list.slice(0, 5).join(', ')}…`,
+    date: ymd(new Date()),
+    hemisphere
   };
 }
 
-function getNextPhase(currentPhase: string): string {
-  const phases = ['New Moon', 'Waxing Crescent', 'First Quarter', 'Waxing Gibbous', 'Full Moon', 'Waning Gibbous', 'Last Quarter', 'Waning Crescent'];
-  const currentIndex = phases.indexOf(currentPhase);
-  return currentIndex >= 0 ? phases[(currentIndex + 1) % phases.length] : 'Waxing Crescent';
-}
+/** Build dynamic events for the next ~45 days. */
+function buildDynamicEvents(hemisphere: 'Northern'|'Southern', windowDays = 45): AstronomicalEvent[] {
+  const events: AstronomicalEvent[] = [];
+  // 1) Next lunar quarters
+  events.push(...upcomingLunarQuarterEvents(4));
 
-// ───────────────────────────────────────────────────────────────────────────────
-// Planetary positions — normalization/fallback helpers
-// ───────────────────────────────────────────────────────────────────────────────
-type RawPlanet = {
-  name?: string;
-  planet?: string;
-  sign?: string;
-  degree?: number;
-  lon?: number;
-  longitude?: number;
-  ecliptic_longitude?: number;
-  retrograde?: boolean;
-  speed?: number;
-  velocity?: number;
-  // @ts-ignore
-  source?: string;
-};
+  // 2) Solstice/equinox if it falls within the window for this hemi
+  events.push(...upcomingSeasonEvents(windowDays, hemisphere));
 
-const ZODIAC_SIGNS_ARRAY = [
-  "Aries","Taurus","Gemini","Cancer","Leo","Virgo",
-  "Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"
-];
+  // 3) Planetary ingresses (approx, using our longitude model)
+  events.push(...upcomingIngressEvents(windowDays));
 
-function lonToSignAndDegree(lon: number) {
-  const L = ((lon % 360) + 360) % 360;
-  const signIndex = Math.floor(L / 30);
-  const degree = Math.round((L - signIndex * 30) * 100) / 100;
-  return { sign: ZODIAC_SIGNS_ARRAY[signIndex], degree };
-}
+  // 4) Retrograde/direct stations within window (from our windows)
+  events.push(...upcomingStationEvents(windowDays));
 
-function normalizePlanetName(n?: string) {
-  if (!n) return '';
-  return n.replace(/_/g, ' ')
-          .toLowerCase()
-          .replace(/^\w/, c => c.toUpperCase());
-}
+  // 5) Seasonal constellation highlight (one “evergreen” item)
+  events.push(constellationHighlightEvent(hemisphere));
 
-function getLon(raw: RawPlanet): number | null {
-  if (typeof raw.ecliptic_longitude === 'number') return raw.ecliptic_longitude;
-  if (typeof raw.longitude === 'number') return raw.longitude;
-  if (typeof raw.lon === 'number') return raw.lon;
-  // @ts-ignore
-  if (typeof (raw as any).lng === 'number') return (raw as any).lng;
-  return null;
-}
+  // Filter to next windowDays, sort by date
+  const start = new Date();
+  const end = new Date(start.getTime() + windowDays * 86400 * 1000);
+  const filtered = events.filter(ev => {
+    const d = new Date(ev.date + 'T00:00:00Z');
+    return d >= start && d <= end;
+  });
 
-function isCalcSource(src?: string) {
-  return !!src && /calc|mock|approx/i.test(src);
-}
-
-const lastGoodPositions = new Map<string, PlanetaryPosition>();
-
-function normalizePlanetaryPositions(rawList: RawPlanet[]): PlanetaryPosition[] {
-  console.log('Normalizing planetary positions:', rawList);
-  const result: PlanetaryPosition[] = [];
-
-  for (const raw of rawList) {
-    const name = normalizePlanetName(raw.name || raw.planet) || 'Planet';
-    const retro = Boolean(
-      raw.retrograde ??
-      (typeof raw.speed === 'number' ? raw.speed < 0 : false) ??
-      (typeof raw.velocity === 'number' ? raw.velocity < 0 : false)
-    );
-    const lon = getLon(raw);
-
-    if (raw.sign && typeof raw.degree === 'number' && raw.degree !== 0) {
-      const pos: PlanetaryPosition = { planet: name, sign: raw.sign, degree: raw.degree, retrograde: retro };
-      lastGoodPositions.set(name, pos);
-      result.push(pos);
-      continue;
-    }
-
-    if (raw.sign && typeof raw.degree === 'number' && raw.degree === 0) {
-      if (isCalcSource((raw as any).source) && lon !== null) {
-        const { sign, degree } = lonToSignAndDegree(lon);
-        const pos: PlanetaryPosition = { planet: name, sign, degree, retrograde: retro };
-        lastGoodPositions.set(name, pos);
-        result.push(pos);
-        continue;
-      }
-
-      const cached = lastGoodPositions.get(name);
-      if (cached) {
-        result.push(cached);
-        continue;
-      }
-
-      const fallbackPositions = getCurrentPlanetaryPositions();
-      const fallbackPlanet = fallbackPositions.find(p => p.planet === name);
-      if (fallbackPlanet) {
-        lastGoodPositions.set(name, fallbackPlanet);
-        result.push(fallbackPlanet);
-        continue;
-      }
-
-      const pos: PlanetaryPosition = { planet: name, sign: raw.sign, degree: 0, retrograde: retro };
-      result.push(pos);
-      continue;
-    }
-
-    if (lon !== null) {
-      const { sign, degree } = lonToSignAndDegree(lon);
-      const pos: PlanetaryPosition = { planet: name, sign, degree, retrograde: retro };
-      lastGoodPositions.set(name, pos);
-      result.push(pos);
-      continue;
-    }
-
-    const cached = lastGoodPositions.get(name);
-    if (cached) {
-      result.push(cached);
-      continue;
-    }
-
-    console.warn(`Skipping ${name}: no sign/degree/longitude and no cache.`);
-  }
-
-  console.log('Normalized planetary positions:', result);
-  return result;
-}
-
-// ───────────────────────────────────────────────────────────────────────────────
-// PLANETS — NEW lightweight offline ephemeris (Mercury..Saturn)
-// Accuracy ~1–2° typical (good for sign/degree + retrograde).
-// ───────────────────────────────────────────────────────────────────────────────
-const D2R = Math.PI / 180;
-const R2D = 180 / Math.PI;
-const norm360 = (x: number) => ((x % 360) + 360) % 360;
-
-function toJulianDay(d: Date): number {
-  const Y = d.getUTCFullYear();
-  let M = d.getUTCMonth() + 1;
-  const D =
-    d.getUTCDate() +
-    (d.getUTCHours() + (d.getUTCMinutes() + d.getUTCSeconds() / 60) / 60) / 24;
-
-  let y = Y;
-  let m = M;
-  if (m <= 2) {
-    y -= 1;
-    m += 12;
-  }
-  const A = Math.floor(y / 100);
-  const B = 2 - A + Math.floor(A / 4);
-  const JD =
-    Math.floor(365.25 * (y + 4716)) +
-    Math.floor(30.6001 * (m + 1)) +
-    D +
-    B -
-    1524.5;
-  return JD;
-}
-
-function centuriesSinceJ2000(d: Date): number {
-  const JD = toJulianDay(d);
-  return (JD - 2451545.0) / 36525.0;
-}
-
-function solveKepler(M: number, e: number): number {
-  let E = M + e * Math.sin(M) * (1 + e * Math.cos(M));
-  for (let i = 0; i < 6; i++) {
-    const f = E - e * Math.sin(E) - M;
-    const f1 = 1 - e * Math.cos(E);
-    const dE = -f / f1;
-    E += dE;
-    if (Math.abs(dE) < 1e-12) break;
-  }
-  return E;
-}
-
-type Elements = {
-  a: number;      // AU
-  e: number;
-  I: number;      // deg
-  L: number;      // deg
-  wBar: number;   // deg (longitude of perihelion)
-  Omega: number;  // deg (ascending node)
-};
-
-function elementsForBody(name: 'Mercury'|'Venus'|'Earth'|'Mars'|'Jupiter'|'Saturn', T: number): Elements {
-  switch (name) {
-    case 'Mercury':
-      return { a: 0.38709893, e: 0.20563069 + 0.00002527*T, I: 7.00487 - 23.51*T/3600, L: 252.25084 + 149472.67411175*T, wBar: 77.45645 + 1.556477*T, Omega: 48.33167 - 0.125340*T };
-    case 'Venus':
-      return { a: 0.72333199, e: 0.00677323 - 0.00004938*T, I: 3.39471 - 2.86*T/3600, L: 181.97973 + 58517.81538729*T, wBar: 131.53298 - 1.617*T, Omega: 76.68069 - 0.277694*T };
-    case 'Earth':
-      return { a: 1.00000011 - 0.00000005*T, e: 0.01671022 - 0.00003804*T, I: 0.00005 - 46.94*T/3600, L: 100.46435 + 35999.3728521*T, wBar: 102.94719 + 0.71953*T, Omega: -11.26064 - 0.008*T };
-    case 'Mars':
-      return { a: 1.52366231 - 0.00007221*T, e: 0.09341233 + 0.00011902*T, I: 1.85061 - 25.47*T/3600, L: 355.45332 + 19140.29934243*T, wBar: 336.04084 + 1.841*T, Omega: 49.57854 - 0.292573*T };
-    case 'Jupiter':
-      return { a: 5.20336301 + 0.00060737*T, e: 0.04839266 - 0.00012880*T, I: 1.30530 - 4.15*T/3600, L: 34.40438 + 3034.74612775*T, wBar: 14.33121 + 1.612666*T, Omega: 100.55615 + 0.204691*T };
-    case 'Saturn':
-      return { a: 9.53707032 - 0.00301530*T, e: 0.05415060 - 0.00036762*T, I: 2.48446 + 6.11*T/3600, L: 49.94432 + 1222.49362201*T, wBar: 93.05723 + 1.963761*T, Omega: 113.71504 - 0.266009*T };
-  }
-}
-
-function heliocentricXYZ(el: Elements): { x: number; y: number; z: number } {
-  const a = el.a;
-  const e = el.e;
-  const I = el.I * D2R;
-  const L = norm360(el.L) * D2R;
-  const wBar = norm360(el.wBar) * D2R;
-  const Omega = norm360(el.Omega) * D2R;
-
-  const M = L - wBar;
-  const E = solveKepler(M, e);
-  const cosE = Math.cos(E);
-  const sinE = Math.sin(E);
-
-  const xPrime = a * (cosE - e);
-  const yPrime = a * Math.sqrt(1 - e * e) * sinE;
-
-  const omega = wBar - Omega;
-
-  const cosO = Math.cos(Omega), sinO = Math.sin(Omega);
-  const cosi = Math.cos(I),     sini = Math.sin(I);
-  const cosw = Math.cos(omega), sinw = Math.sin(omega);
-
-  const x1 = cosw * xPrime - sinw * yPrime;
-  const y1 = sinw * xPrime + cosw * yPrime;
-
-  const x2 = x1;
-  const y2 = y1 * cosi;
-  const z2 = y1 * sini;
-
-  const x = cosO * x2 - sinO * y2;
-  const y = sinO * x2 + cosO * y2;
-  const z = z2;
-
-  return { x, y, z };
-}
-
-function geocentricLongitude(planet: 'Mercury'|'Venus'|'Mars'|'Jupiter'|'Saturn', d: Date): number {
-  const T = centuriesSinceJ2000(d);
-  const earth = heliocentricXYZ(elementsForBody('Earth', T));
-  const body  = heliocentricXYZ(elementsForBody(planet, T));
-  const X = body.x - earth.x;
-  const Y = body.y - earth.y;
-  const lambda = Math.atan2(Y, X) * R2D;
-  return norm360(lambda);
-}
-
-function isRetrograde(planet: 'Mercury'|'Venus'|'Mars'|'Jupiter'|'Saturn', d: Date): boolean {
-  const lon1 = geocentricLongitude(planet, d);
-  const lon2 = geocentricLongitude(planet, new Date(d.getTime() + 86400000));
-  const delta = ((lon2 - lon1 + 540) % 360) - 180; // -180..+180
-  return delta < 0;
-}
-
-function getPlanetaryPositionsApprox(d = new Date()): PlanetaryPosition[] {
-  const names: Array<'Mercury'|'Venus'|'Mars'|'Jupiter'|'Saturn'> = [
-    'Mercury','Venus','Mars','Jupiter','Saturn'
-  ];
-
-  return names.map((name) => {
-    const lon = geocentricLongitude(name, d);
-    const { sign, degree } = lonToSignAndDegree(lon);
-    const retro = isRetrograde(name, d);
-    return { planet: name, sign, degree, retrograde: retro };
+  filtered.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  // De-dup by (name+date)
+  const seen = new Set<string>();
+  return filtered.filter(e => {
+    const k = `${e.name}|${e.date}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
   });
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// Public planetary API (your old fallback kept as backup)
-// ───────────────────────────────────────────────────────────────────────────────
-export async function getCurrentPlanetaryPositionsEnhanced(
-  hemisphere: 'Northern' | 'Southern' = 'Northern'
-): Promise<PlanetaryPosition[]> {
-  try {
-    return getPlanetaryPositionsApprox(new Date());
-  } catch (err) {
-    console.error('Error in approx planetary engine, falling back:', err);
-    return getCurrentPlanetaryPositions();
-  }
-}
-
-// Legacy simple placeholder (kept as ultimate fallback)
-export function getCurrentPlanetaryPositions(): PlanetaryPosition[] {
-  const today = nowInSydney();
-  const baseDate = new Date('2025-08-13');
-  const daysSinceBase = Math.floor((today.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-
-  return [
-    { planet: "Mercury",  sign: "Leo",      degree: Math.max(0, Math.min(29, 28 + daysSinceBase * 1.2)),  retrograde: false },
-    { planet: "Venus",    sign: "Virgo",    degree: Math.max(0, Math.min(29, 18 + daysSinceBase * 0.8)),  retrograde: false },
-    { planet: "Mars",     sign: "Gemini",   degree: Math.max(0, Math.min(29, 22 + daysSinceBase * 0.3)),  retrograde: false },
-    { planet: "Jupiter",  sign: "Gemini",   degree: Math.max(0, Math.min(29, 14 + daysSinceBase * 0.05)), retrograde: false },
-    { planet: "Saturn",   sign: "Pisces",   degree: Math.max(0, Math.min(29, 19 + daysSinceBase * 0.02)), retrograde: true  },
-  ];
-}
-
-// ───────────────────────────────────────────────────────────────────────────────
-// Hemisphere events
-// ───────────────────────────────────────────────────────────────────────────────
-function getSouthernHemisphereEvents(): AstronomicalEvent[] {
-  const today = new Date().toISOString().split('T')[0];
-  return [
-    {
-      name: "🌟 Southern Cross Navigation",
-      description: "The Southern Cross (Crux) serves as the southern hemisphere's primary navigation constellation, pointing toward the South Celestial Pole.",
-      date: today,
-      hemisphere: 'Southern',
-      type: 'planet'
-    },
-    {
-      name: "✨ Magellanic Clouds Viewing",
-      description: "Optimal viewing conditions for the Large and Small Magellanic Clouds, satellite galaxies of the Milky Way visible only from southern latitudes.",
-      date: today,
-      hemisphere: 'Southern',
-      type: 'planet'
-    },
-    {
-      name: "🌌 Carina Nebula Region",
-      description: "The Carina constellation region offers spectacular deep-sky viewing, including the famous Carina Nebula, visible only from southern latitudes.",
-      date: today,
-      hemisphere: 'Southern',
-      type: 'planet'
-    }
-  ];
-}
-
+/** Your existing API — now dynamic. */
 export function getHemisphereEvents(hemisphere: 'Northern' | 'Southern'): AstronomicalEvent[] {
-  const today = new Date();
-  const thirtyDaysFromNow = new Date(today.getTime() + (30 * 24 * 60 * 60 * 1000));
-
-  const filteredEvents = CURRENT_ASTRONOMICAL_EVENTS.filter(event => {
-    const eventDate = new Date(event.date);
-    const isInTimeRange = eventDate >= today && eventDate <= thirtyDaysFromNow;
-    const isRelevantToHemisphere = event.hemisphere === 'Both' || event.hemisphere === hemisphere;
-    return isInTimeRange && isRelevantToHemisphere;
-  }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-  if (filteredEvents.length === 0) {
-    if (hemisphere === 'Northern') {
-      return [
-        {
-          name: "Polaris Navigation Star",
-          description: "The North Star (Polaris) remains fixed in the northern sky, serving as a reliable navigation reference point. Ursa Major and Cassiopeia circle around it.",
-          date: today.toISOString().split('T')[0],
-          hemisphere: 'Northern',
-          type: 'planet'
-        },
-        {
-          name: "Orion Winter Viewing",
-          description: "Orion constellation dominates the northern winter sky, with its distinctive belt and bright stars Betelgeuse and Rigel clearly visible.",
-          date: today.toISOString().split('T')[0],
-          hemisphere: 'Northern',
-          type: 'planet'
-        }
-      ];
-    }
-    return getSouthernHemisphereEvents();
-  }
-
-  return filteredEvents;
+  return buildDynamicEvents(hemisphere, 45);
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// Constellations (static + enhanced hook point)
+// Insight block (unchanged idea; now backed by dynamic events/moon)
 // ───────────────────────────────────────────────────────────────────────────────
-export async function getVisibleConstellationsEnhanced(hemisphere: 'Northern' | 'Southern'): Promise<string[]> {
-  try {
-    console.log('Using fallback constellations');
-  } catch (error) {
-    console.error('Error fetching enhanced constellations:', error);
-  }
-  return getVisibleConstellations(hemisphere);
-}
-
-export function getVisibleConstellations(hemisphere: 'Northern' | 'Southern'): string[] {
-  const month = new Date().getMonth();
-
-  const northernConstellations = [
-    ["Orion", "Taurus", "Gemini", "Auriga", "Perseus", "Canis Major", "Ursa Major", "Cassiopeia"], // Winter (Dec-Feb)
-    ["Leo", "Virgo", "Boötes", "Corona Borealis", "Ursa Major", "Ursa Minor", "Draco", "Cassiopeia"], // Spring (Mar-May)
-    ["Cygnus", "Lyra", "Aquila", "Hercules", "Ophiuchus", "Ursa Major", "Cassiopeia", "Draco"], // Summer (Jun-Aug)
-    ["Pegasus", "Andromeda", "Cassiopeia", "Cepheus", "Ursa Major", "Perseus", "Aries", "Triangulum"] // Fall (Sep-Nov)
-  ];
-
-  const southernConstellations = [
-    ["Southern Cross", "Centaurus", "Carina", "Vela", "Puppis", "Crux", "Musca", "Chamaeleon"], // Summer (Dec-Feb)
-    ["Southern Cross", "Centaurus", "Hydra", "Crater", "Corvus", "Carina", "Chamaeleon", "Volans"], // Autumn (Mar-May)
-    ["Southern Cross", "Centaurus", "Carina", "Sagittarius", "Scorpius", "Ara", "Telescopium", "Corona Australis"], // Winter (Jun-Aug)
-    ["Southern Cross", "Centaurus", "Carina", "Grus", "Phoenix", "Tucana", "Pavo", "Indus"] // Spring (Sep-Nov)
-  ];
-
-  const seasonIndex = Math.floor(month / 3);
-  return hemisphere === 'Northern'
-    ? northernConstellations[seasonIndex]
-    : southernConstellations[seasonIndex];
-}
-
-// ───────────────────────────────────────────────────────────────────────────────
-// Insight + APOD combo
-// ───────────────────────────────────────────────────────────────────────────────
-export function getAstronomicalInsight(hemisphere: 'Northern' | 'Southern'): string {
-  const moonPhase = getCurrentMoonPhase();
-  const events = getHemisphereEvents(hemisphere);
-  const constellations = getVisibleConstellations(hemisphere);
-
-  let insights: string[];
-
-  if (hemisphere === 'Southern') {
-    insights = [
-      `The ${moonPhase.phase} (${moonPhase.illumination}% illuminated) illuminates the southern sky, ${moonPhase.illumination > 75 ? 'washing out fainter stars but highlighting the Southern Cross and Carina region' : 'creating perfect conditions for viewing the Southern Cross, Magellanic Clouds, and other southern celestial treasures unique to your hemisphere'}.`,
-      `In the Southern Hemisphere, the iconic Southern Cross (Crux) guides navigators toward the South Celestial Pole, while the Large and Small Magellanic Clouds—satellite galaxies of the Milky Way—offer spectacular viewing opportunities invisible to northern observers.`,
-      events.length > 0
-        ? `Southern Hemisphere highlight: ${events[0].name}. ${events[0].description}`
-        : `The Southern Hemisphere celestial sphere reveals wonders invisible to northern observers, including the Coal Sack Nebula, Carina Nebula, Magellanic Clouds, and the brilliant Southern Cross constellation pointing to the South Celestial Pole.`,
-      `From your Southern Hemisphere location, you have exclusive access to celestial treasures like the Southern Cross, Magellanic Clouds, and deep-sky objects in Carina and Centaurus.`
-    ];
-  } else {
-    insights = [
-      `The ${moonPhase.phase} (${moonPhase.illumination}% illuminated) ${moonPhase.illumination > 50 ? 'brightens' : 'darkens'} the northern sky, ${moonPhase.illumination > 75 ? 'making it perfect for lunar observation but washing out fainter stars' : 'creating ideal conditions for viewing Orion, the Big Dipper, and northern deep-sky objects'}.`,
-      `In the northern hemisphere, Polaris (the North Star) remains fixed as a reliable navigation beacon, while Ursa Major (Big Dipper) and Cassiopeia circle around it.`,
-      events.length > 0
-        ? `Northern sky highlight: ${events[0].name}. ${events[0].description}`
-        : `The northern celestial sphere offers iconic sights like Ursa Major, Cassiopeia, and Orion’s Belt. Polaris serves as the fixed navigation star.`,
-      `Polaris and the circumpolar constellations (Ursa Major, Cassiopeia) are visible year-round from northern latitudes.`
-    ];
-  }
-
-  return insights[Math.floor(Math.random() * insights.length)];
+export function getAstronomicalInsight(hemisphere: 'Northern'|'Southern'): string {
+  const moon = getCurrentMoonPhase();
+  const ev = getHemisphereEvents(hemisphere);
+  const top = ev[0] ? `${ev[0].name} on ${fmtAU(new Date(ev[0].date))}.` : '';
+  const line =
+    hemisphere === 'Southern'
+    ? `The ${moon.phase.toLowerCase()} (${moon.illumination}% lit) frames southern treasures like the Southern Cross and Carina. ${top}`
+    : `The ${moon.phase.toLowerCase()} (${moon.illumination}% lit) sets the stage for Polaris, Cassiopeia and Orion season. ${top}`;
+  return line.trim();
 }
 
 export async function getAstronomicalInsightWithApod(
