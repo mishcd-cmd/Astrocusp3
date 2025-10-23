@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from './supabase'; 
 import { isStripeConfigured, getSubscriptionProducts, type StripeProduct } from './stripeConfig';
 import { Platform } from 'react-native';
 
