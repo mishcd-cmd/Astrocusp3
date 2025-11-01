@@ -1,20 +1,42 @@
 // scripts/export-web.js
-const { spawn } = require('child_process');
+// Purpose: run "expo export --platform web" and *show* the underlying error output.
+// This makes Netlify (and local) logs actually useful when Metro fails.
 
-// Clone current env and remove variables that can break project root detection
-const env = { ...process.env };
-delete env.EXPO_PROJECT_ROOT;
-delete env.EXPO_ROOT;
-delete env.REACT_NATIVE_PATH;
+const { spawnSync } = require('child_process');
 
-// NOTE: We rely on local expo via `npm exec`, not global `expo` command.
-const args = ['exec', 'expo', 'export', '--', '--platform', 'web', '--output-dir', 'dist'];
+const args = [
+  'exec',
+  'expo',
+  'export',
+  '--',
+  '--platform',
+  'web',
+  '--output-dir',
+  'dist',
+];
 
-console.log('> Running:', 'npm', args.join(' '));
-const child = spawn('npm', args, { stdio: 'inherit', env, cwd: process.cwd() });
-
-child.on('exit', (code) => process.exit(code ?? 0));
-child.on('error', (err) => {
-  console.error('Failed to spawn export:', err);
-  process.exit(1);
+// On Windows shells, set shell: true for compatibility.
+// stdio: 'inherit' streams Expo/Metro output directly to the console/Netlify log.
+const result = spawnSync('npm', args, {
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+  env: {
+    ...process.env,
+    // Helpful flags to get more verbose Expo logs during CI
+    EXPO_DEBUG: process.env.EXPO_DEBUG ?? '1',
+    EXPO_NO_TELEMETRY: process.env.EXPO_NO_TELEMETRY ?? '1',
+    // Make CI non-interactive
+    CI: process.env.CI ?? 'true',
+  },
 });
+
+if (typeof result.status === 'number' && result.status !== 0) {
+  // Propagate the same exit code so Netlify marks the build as failed.
+  process.exit(result.status);
+}
+
+// If status is null, something prevented the child from spawning
+if (result.error) {
+  console.error('[export-web] Failed to spawn Expo:', result.error);
+  process.exit(1);
+}

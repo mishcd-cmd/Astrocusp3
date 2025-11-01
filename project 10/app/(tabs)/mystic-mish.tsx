@@ -1,437 +1,5 @@
 // apps/tabs/mystic-mish.tsx
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  Image,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { Moon, Star, Sparkles, Eye, Scroll as ScrollIcon, Crown } from 'lucide-react-native';
-import CosmicBackground from '../../components/CosmicBackground';
-import CosmicButton from '../../components/CosmicButton';
-import { getCurrentMoonPhase } from '../../utils/astronomy';
-import { getSubscriptionStatus } from '../../utils/billing';
-
-// Fallback for web environment
-if (typeof Platform === 'undefined') {
-  (global as any).Platform = { OS: 'web' };
-}
-
-// ✅ Pre-import the avatar image for better type safety
-const mishAvatar = require('../../assets/images/mystic-mish/headshot.png');
-
-type RitualPayload = { title: string; body: string; version?: string };
-
-// Markers to purge any old Halloween/Samhain content that might be cached
-const HALLOWEEN_MARKERS = [
-  'halloween',
-  'samhain',
-  'veil walker',
-  'pumpkin',
-  'thinning veil',
-];
-
-function stripHalloween(input: string): string {
-  const lines = (input || '').split('\n');
-  const filtered = lines.filter(
-    (line) => !HALLOWEEN_MARKERS.some((m) => line.toLowerCase().includes(m))
-  );
-  return filtered.join('\n').trim();
-}
-
-const BUILD_TAG = 'MysticMishTab v2025-11-01';
-
-export default function MysticMishScreen() {
-  const router = useRouter();
-  const [moonPhase, setMoonPhase] = useState<any>(null);
-  const [hasAccess, setHasAccess] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [imageError, setImageError] = useState(false);
-
-  // The live ritual payload shown on this tab
-  const [payload, setPayload] = useState<RitualPayload | null>(null);
-
-  // Tips stay, but content is now driven by payload
-  const tips = [
-    {
-      icon: <Moon size={20} color="#d4af37" />,
-      title: 'Moon Phase Magic',
-      tip: 'New moons set intentions, full moons release and manifest. Waxing grows desires, waning lets go.',
-    },
-    {
-      icon: <Sparkles size={20} color="#8b9dc3" />,
-      title: 'Cusp Power',
-      tip: 'On a cusp you hold dual energies. Work with both signs rulers and elements in your spells.',
-    },
-    {
-      icon: <Star size={20} color="#d4af37" />,
-      title: 'Daily Practice',
-      tip: 'Small daily rituals compound. A candle, an affirmation, or a mindful pause can be real magic.',
-    },
-  ];
-
-  // Hydrate subscription, moon phase, and any cached ritual; attach listener
-  useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      try {
-        // Subscription
-        const sub = await getSubscriptionStatus();
-        if (!mounted) return;
-        setHasAccess(Boolean(sub?.active));
-
-        // Moon phase
-        const phase = getCurrentMoonPhase();
-        setMoonPhase(phase);
-
-        // Local cached ritual
-        try {
-          if (typeof window !== 'undefined') {
-            const raw = window.localStorage.getItem('mish.ritual');
-            if (raw) {
-              const p = JSON.parse(raw) as RitualPayload;
-              setPayload({
-                title: p.title || 'Mystic Mish',
-                body: stripHalloween(p.body || ''),
-                version: p.version,
-              });
-            }
-          }
-        } catch {
-          // ignore
-        }
-      } catch (err) {
-        console.error('[MysticMishTab] init error:', err);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    // Listen for ritual broadcasts from the Daily page emitter
-    const onMish = (e: Event) => {
-      const detail = (e as CustomEvent).detail as RitualPayload | undefined;
-      if (!detail) return;
-      const clean: RitualPayload = {
-        title: detail.title || 'Mystic Mish',
-        body: stripHalloween(detail.body || ''),
-        version: detail.version,
-      };
-      setPayload(clean);
-      try {
-        window.localStorage.setItem('mish.ritual', JSON.stringify(clean));
-      } catch {
-        // ignore
-      }
-    };
-
-    load();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('mish:ritual', onMish as EventListener);
-    }
-
-    return () => {
-      mounted = false;
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('mish:ritual', onMish as EventListener);
-      }
-    };
-  }, []);
-
-  const handleUpgrade = () => router.push('/subscription');
-
-  // Loading state
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <CosmicBackground />
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#d4af37" />
-            <Text style={styles.loadingText}>Loading mystical wisdom...</Text>
-          </View>
-        </SafeAreaView>
-      </View>
-    );
-  }
-
-  // Paywall
-  if (!hasAccess) {
-    return (
-      <View style={styles.container}>
-        <CosmicBackground />
-        <SafeAreaView style={styles.safeArea}>
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            <View style={styles.headerCenter}>
-              <Text style={styles.title}>Mystic Mish</Text>
-              <Text style={styles.subtitle}>Your Cosmic Guide and Ritual Keeper</Text>
-            </View>
-
-            <LinearGradient
-              colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
-              style={styles.paywallCard}
-            >
-              <View style={styles.paywallHeader}>
-                <Crown size={32} color="#d4af37" />
-                <Text style={styles.paywallTitle}>Unlock Mystic Mish</Text>
-              </View>
-
-              <View style={styles.mishPreviewContainer}>
-                <Image
-                  source={mishAvatar}
-                  style={styles.mishPreviewImage}
-                  resizeMode="cover"
-                  onError={() => setImageError(true)}
-                />
-                {imageError && (
-                  <View style={styles.mishPreviewFallback}>
-                    <Text style={styles.mishEmojiLarge}>🔮</Text>
-                    <Text style={styles.mishNameLarge}>Mish</Text>
-                  </View>
-                )}
-              </View>
-
-              <Text style={styles.paywallDescription}>
-                Access Mishs sacred spells, moon rituals, and cosmic wisdom with Astral Plane.
-              </Text>
-
-              <View style={styles.featuresList}>
-                <View style={styles.featureItem}>
-                  <ScrollIcon size={16} color="#d4af37" />
-                  <Text style={styles.featureText}>Sacred spells and rituals</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <Moon size={16} color="#d4af37" />
-                  <Text style={styles.featureText}>Moon phase guidance</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <Sparkles size={16} color="#d4af37" />
-                  <Text style={styles.featureText}>Cusp specific practices</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <Eye size={16} color="#d4af37" />
-                  <Text style={styles.featureText}>Mystic tips and wisdom</Text>
-                </View>
-              </View>
-
-              <CosmicButton
-                title="Upgrade to Astral Plane"
-                onPress={handleUpgrade}
-                style={styles.upgradeButton}
-              />
-            </LinearGradient>
-          </ScrollView>
-        </SafeAreaView>
-      </View>
-    );
-  }
-
-  // Fallback content if no ritual was broadcast yet
-  const fallbackTitle = 'November Rite Of Renewal';
-  const fallbackBody =
-    'November gateway active. Open the Daily page and tap Mish to load the full rite here. If you already tapped, hard refresh this tab.';
-
-  const title = payload?.title || fallbackTitle;
-  const body = payload?.body || fallbackBody;
-
-  return (
-    <View style={styles.container}>
-      <CosmicBackground />
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Header */}
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerIcon}>✨</Text>
-            <Text style={styles.headerTitle}>Mystic Mish</Text>
-            <Text style={styles.headerSubtitle}>Your Cosmic Guide and Ritual Keeper</Text>
-          </View>
-
-          {/* Mish Avatar & Welcome */}
-          <LinearGradient
-            colors={['rgba(212, 175, 55, 0.2)', 'rgba(139, 157, 195, 0.1)']}
-            style={styles.welcomeCard}
-          >
-            <View style={styles.mishAvatarContainer}>
-              <Image
-                source={mishAvatar}
-                style={styles.mishAvatar}
-                resizeMode="cover"
-                onError={() => setImageError(true)}
-              />
-              {imageError && (
-                <View style={styles.mishAvatarFallback}>
-                  <Text style={styles.mishEmojiLarge}>🔮</Text>
-                  <Text style={styles.mishNameLarge}>Mish</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.welcomeContent}>
-              <Text style={styles.welcomeTitle}>Welcome, cosmic soul.</Text>
-              <Text style={styles.welcomeText}>
-                This tab now shows the live ritual sent from the Daily page. Tap the little Mish on
-                the Daily screen to broadcast the full spell here.
-              </Text>
-            </View>
-          </LinearGradient>
-
-          {/* Current Moon Message */}
-          <LinearGradient
-            colors={['rgba(139, 157, 195, 0.25)', 'rgba(75, 0, 130, 0.15)']}
-            style={styles.moonMessageCard}
-          >
-            <View style={styles.moonHeader}>
-              <Moon size={24} color="#d4af37" />
-              <Text style={styles.moonTitle}>Seasonal Focus</Text>
-            </View>
-
-            {moonPhase && (
-              <Text style={styles.moonPhaseText}>
-                Current Moon: {moonPhase.phase} ({moonPhase.illumination}% illuminated)
-              </Text>
-            )}
-
-            <Text style={styles.moonMessage}>
-              November magic is active. Open the Daily page and tap Mish to reveal the rite here.
-            </Text>
-          </LinearGradient>
-
-          {/* Live Ritual Card */}
-          <View style={styles.spellsSection}>
-            <Text style={styles.sectionTitle}>Todays Featured Rite</Text>
-
-            <LinearGradient
-              colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
-              style={styles.spellCard}
-            >
-              <View style={styles.spellHeader}>
-                <ScrollIcon size={20} color="#d4af37" />
-                <Text style={styles.spellTitle}>{title}</Text>
-              </View>
-
-              {payload?.version ? (
-                <Text style={styles.version}>Build {payload.version} • {BUILD_TAG}</Text>
-              ) : (
-                <Text style={styles.version}>{BUILD_TAG}</Text>
-              )}
-
-              <View style={styles.fullSpellContainer}>
-                <Text style={styles.fullSpellText}>{body}</Text>
-              </View>
-            </LinearGradient>
-          </View>
-
-          {/* Tips */}
-          <View style={styles.tipsSection}>
-            <Text style={styles.sectionTitle}>Mishs Cosmic Tips</Text>
-
-            {tips.map((tip) => (
-              <LinearGradient
-                key={tip.title}
-                colors={['rgba(139, 157, 195, 0.15)', 'rgba(139, 157, 195, 0.05)']}
-                style={styles.tipCard}
-              >
-                <View style={styles.tipHeader}>
-                  {tip.icon}
-                  <Text style={styles.tipTitle}>{tip.title}</Text>
-                </View>
-                <Text style={styles.tipText}>{tip.tip}</Text>
-              </LinearGradient>
-            ))}
-          </View>
-
-          {/* Wisdom */}
-          <LinearGradient
-            colors={['rgba(212, 175, 55, 0.2)', 'rgba(139, 157, 195, 0.1)']}
-            style={styles.wisdomCard}
-          >
-            <View style={styles.wisdomHeader}>
-              <Eye size={24} color="#d4af37" />
-              <Text style={styles.wisdomTitle}>Mishs Final Wisdom</Text>
-            </View>
-            <Text style={styles.wisdomText}>
-              Magic is intention, attention, and courage. Keep it simple, keep it honest, and keep it
-              yours.
-            </Text>
-            <Text style={styles.wisdomSignature}>Mystic Mish ✨</Text>
-          </LinearGradient>
-        </ScrollView>
-      </SafeAreaView>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
-
-  headerCenter: { alignItems: 'center', paddingTop: 20, paddingBottom: 24 },
-  headerIcon: { fontSize: 48, marginBottom: 6, color: '#d4af37' },
-  headerTitle: { fontSize: 26, color: '#e8e8e8', fontFamily: 'Vazirmatn-Bold', textAlign: 'center' },
-  headerSubtitle: { marginTop: 4, color: '#8b9dc3', fontSize: 16, fontFamily: 'Vazirmatn-Regular', textAlign: 'center' },
-
-  welcomeCard: { borderRadius: 16, padding: 24, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)', flexDirection: 'row', alignItems: 'center' },
-  mishAvatarContainer: { position: 'relative', width: 80, height: 95, marginRight: 20, borderRadius: 18, overflow: 'hidden', borderWidth: 2, borderColor: '#d4af37' },
-  mishAvatar: { width: '100%', height: '100%', borderRadius: 18 },
-  mishAvatarFallback: { position: 'absolute', inset: 0, backgroundColor: 'rgba(139, 157, 195, 0.1)', alignItems: 'center', justifyContent: 'center' },
-  mishEmojiLarge: { fontSize: 60, marginBottom: 8 },
-  mishNameLarge: { fontSize: 14, fontFamily: 'Inter-SemiBold', color: '#FFD700', textAlign: 'center' },
-  welcomeContent: { flex: 1 },
-  welcomeTitle: { fontSize: 22, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginBottom: 8 },
-  welcomeText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20 },
-
-  moonMessageCard: { borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 2, borderColor: '#FFD700' },
-  moonHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  moonTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginLeft: 8 },
-  moonPhaseText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#FFD700', textAlign: 'center', marginBottom: 12 },
-  moonMessage: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#FFD700', textAlign: 'center' },
-
-  spellsSection: { marginBottom: 32 },
-  sectionTitle: { fontSize: 28, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', textAlign: 'center', marginBottom: 20 },
-  spellCard: { borderRadius: 16, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)' },
-  spellHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  spellTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', marginLeft: 8 },
-  version: { fontSize: 11, color: '#cfcfcf', textAlign: 'center', marginBottom: 10 },
-  fullSpellContainer: { backgroundColor: 'rgba(26, 26, 46, 0.4)', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.2)' },
-  fullSpellText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20, fontStyle: 'italic' },
-
-  tipsSection: { marginBottom: 32 },
-  tipCard: { borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.3)' },
-  tipHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  tipTitle: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#e8e8e8', marginLeft: 8 },
-  tipText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20 },
-
-  wisdomCard: { borderRadius: 16, padding: 24, borderWidth: 2, borderColor: 'rgba(212, 175, 55, 0.4)' },
-  wisdomHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  wisdomTitle: { fontSize: 22, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginLeft: 8 },
-  wisdomText: { fontSize: 18, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 24, textAlign: 'center', fontStyle: 'italic', marginBottom: 12 },
-  wisdomSignature: { fontSize: 16, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', textAlign: 'center' },
-
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { fontSize: 18, fontFamily: 'Inter-Regular', color: '#8b9dc3', marginTop: 12 },
-
-  paywallCard: { borderRadius: 16, padding: 24, marginTop: 40, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)', alignItems: 'center' },
-  paywallHeader: { alignItems: 'center', marginBottom: 24 },
-  paywallTitle: { fontSize: 32, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginTop: 12, textAlign: 'center', marginBottom: 16,
-    ...Platform.select({ web: { textShadow: '1px 1px 2px #4B0082' }, default: { textShadowColor: '#4B0082', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 } }),
-  },
-  mishPreviewContainer: { alignItems: 'center', marginBottom: 24, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: '#d4af37', width: 100, height: 120 },
-  mishPreviewImage: { width: '100%', height: '100%' },
-  mishPreviewFallback: { position: 'absolute', inset: 0, backgroundColor: 'rgba(139, 157, 195, 0.1)', alignItems: 'center', justifyContent: 'center' },
-  paywallDescription: { fontSize: 20, fontFamily: 'Vazirmatn-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 26, marginBottom: 24 },
-  featuresList: { gap: 12, marginBottom: 32, width: '100%' },
-  featureItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
-  featureText: { fontSize: 18, fontFamily: 'Vazirmatn-Medium', color: '#e8e8e8', marginLeft: 12 },
-  upgradeButton: { minWidth: 200 },
-});
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -445,21 +13,61 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Moon, Star, Sparkles, Eye, Scroll, Crown } from 'lucide-react-native';
 import CosmicBackground from '../../components/CosmicBackground';
 import CosmicButton from '../../components/CosmicButton';
 import HoroscopeHeader from '../../components/HoroscopeHeader';
 import { getCurrentMoonPhase } from '../../utils/astronomy';
 import { getSubscriptionStatus } from '../../utils/billing';
 
-// Fallback for web environment
+// Web icons: use lucide-react to avoid RN Web/SVG traps
+let MoonIcon: any, StarIcon: any, SparklesIcon: any, EyeIcon: any, ScrollIcon: any, CrownIcon: any;
+if (Platform.OS === 'web') {
+  const lucide = require('lucide-react');
+  MoonIcon = lucide.Moon;
+  StarIcon = lucide.Star;
+  SparklesIcon = lucide.Sparkles;
+  EyeIcon = lucide.Eye;
+  ScrollIcon = lucide.Scroll;
+  CrownIcon = lucide.Crown;
+}
+
 if (typeof Platform === 'undefined') {
   (global as any).Platform = { OS: 'web' };
 }
 
-// ✅ Pre-import the avatar image for better type safety (renamed to lowercase, no spaces)
 const mishAvatar = require('../../assets/images/mystic-mish/headshot.png');
 
+// -------------- tiny utils for ritual bridge --------------
+type RitualPayload = { title: string; body: string; version?: string };
+
+const HALLOWEEN_MARKERS = [
+  'Samhain',
+  'Veil Walker',
+  'thinning veil',
+  'Halloween',
+  'pumpkin'
+];
+
+function isHalloweenish(s: string) {
+  const hay = (s || '').toLowerCase();
+  return HALLOWEEN_MARKERS.some(m => hay.includes(m.toLowerCase()));
+}
+
+function getStoredRitual(): RitualPayload | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('mish.ritual');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RitualPayload;
+    if (!parsed?.body) return null;
+    if (isHalloweenish(parsed.body)) return null; // block stale halloween
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// -------------- Component --------------
 export default function MysticMishScreen() {
   const router = useRouter();
   const [moonPhase, setMoonPhase] = useState<any>(null);
@@ -467,208 +75,76 @@ export default function MysticMishScreen() {
   const [loading, setLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
 
+  // live ritual content sent from the floating Mish component
+  const [ritual, setRitual] = useState<RitualPayload | null>(null);
+
   useEffect(() => {
     let isMounted = true;
-    
+
     const loadData = async () => {
       let subscriptionStatus: any;
       try {
         console.log('🔍 [mystic-mish] Checking subscription status...');
         subscriptionStatus = await getSubscriptionStatus();
         console.log('🔍 [mystic-mish] Subscription result:', subscriptionStatus);
-        
-        // Load moon phase
-        const phase = getCurrentMoonPhase();
-        setMoonPhase(phase);
+
+        setMoonPhase(getCurrentMoonPhase());
       } catch (error) {
         console.error('Error loading Mystic Mish data:', error);
       } finally {
         if (isMounted) {
-          if (subscriptionStatus) {
-            setHasAccess(subscriptionStatus.active || false);
-          }
+          if (subscriptionStatus) setHasAccess(!!subscriptionStatus.active);
           setLoading(false);
         }
       }
     };
-    
+
     loadData();
-    
+
+    // tiny listener: pick up most recent ritual from storage, and subscribe to push events
+    const prime = getStoredRitual();
+    if (prime) setRitual(prime);
+
+    const onRitual = (e: any) => {
+      const detail = (e && e.detail) as RitualPayload | undefined;
+      if (detail?.body && !isHalloweenish(detail.body)) {
+        setRitual(detail);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mish:ritual', onRitual as EventListener);
+    }
+
     return () => {
       isMounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('mish:ritual', onRitual as EventListener);
+      }
     };
   }, []);
 
-  const handleUpgrade = () => {
-    router.push('/subscription');
-  };
+  const handleUpgrade = () => router.push('/subscription');
+  const handleSettings = () => router.push('/(tabs)/settings');
+  const handleAccount = () => router.push('/settings');
 
-  const handleSettings = () => {
-    router.push('/(tabs)/settings');
-  };
-
-  const handleAccount = () => {
-    router.push('/settings');
-  };
-
-  // === Beltane (Southern) ===
-  const southernEclipseSpell = {
-    title: '🌺 The Wild Green Awakening',
-    subtitle: '🌸 Southern Hemisphere Beltane Spell',
-    description:
-      "A ritual for sensual rebirth and life force ignition as spring reaches its ecstatic peak",
-    seasonalContext:
-      "While the North walks with ghosts, the South dances with life erupting. October here is Beltane season — spring's passionate crescendo before summer's fullness. The witch's wheel turns towards fire, fertility, and unbridled creative force.",
-    fullSpell: `🌸 Southern Hemisphere Beltane Spell
-🌺 The Wild Green Awakening
-A ritual for sensual rebirth and life force ignition as spring reaches its ecstatic peak
-
-Seasonal Context:
-While the North walks with ghosts, the South dances with life erupting. October here is Beltane season — spring's passionate crescendo before summer's fullness. The witch's wheel turns towards fire, fertility, and unbridled creative force.
-
-Moon Phase:
-Waxing towards Full (building power, manifestation)
-
-Elements:
-Fire & Earth
-
-🔥 What You'll Need
-• Red or green candle (vitality and growth)
-• Fresh flowers (jasmine, rose, or whatever blooms near you)
-• Honey (sweetness of life)
-• Small bowl of soil
-• Ribbon (red, green, or white)
-• Your favourite sensual oil or perfume
-
-🌿 Steps
-1. Ground in the Green
-Stand barefoot on earth or hold your bowl of soil.
-Feel the rising life force beneath you — roots drinking, seeds splitting, everything reaching.
-Say:
-"From winter's sleep, the wild awakes,
-The Earth herself now stirs and shakes."
-
-2. Anoint and Invoke
-Dab oil on your pulse points — wrists, throat, heart.
-Light your candle and say:
-"I am the blossom and the thorn,
-The sensual, the fierce, reborn.
-Life moves through me, strong and free—
-As spring ignites, so too do I decree."
-
-3. Weave Your Intention
-Take your ribbon and tie it loosely around your wrist.
-As you tie it, speak aloud what you're calling into bloom:
-Creativity? Passion? New projects? Love? Vitality?
-Say:
-"By fire and flower, soil and sun,
-I call what I desire — let it be done.
-No timid seed, no cautious start—
-I bloom with wildness in my heart."
-
-4. The Honey Blessing
-Place a drop of honey on your tongue.
-Feel the sweetness.
-Say:
-"Life is sweet, and life is mine.
-I drink the nectar, I taste the divine."
-
-5. Flower Offering
-Scatter your fresh flowers — some on your altar, some outside for the land, some in water to float and release.
-As you scatter them:
-"For the Earth who feeds me,
-For the fire that frees me,
-For the spring that sees me—
-I give beauty back to the world."
-
-6. Dance the Ignition
-Move your body. Put on music. Let the vitality you've invoked move through you.
-Even one minute of wild, free movement seals the spell.
-
-✨ Optional Touch:
-Keep the ribbon on for three days, then tie it to a tree as an offering. Plant something — even a single seed in a pot — to ground your Beltane magic into physical form.
-
-🌙 Blessed Samhain, blessed Beltane — may the wheel turn well for you, wherever you stand upon it.`,
-    moonPhase: 'Waxing to Full',
-    element: 'Fire & Earth',
-  };
-
-  // === Samhain (Northern) ===
-  const northernEclipseSpell = {
-    title: "🕯️ The Veil Walker's Binding",
-    subtitle: '🎃 Northern Hemisphere Samhain Spell',
-    description:
-      'A ritual for ancestral connection and protective passage through the thinning veil',
-    seasonalContext:
-      "The autumn harvest reaches its final breath as October descends towards Samhain — the moment when summer's death becomes winter's gestation. The veil between worlds grows gossamer-thin, and those with sight may glimpse what lies beyond.",
-    fullSpell: `🎃 Northern Hemisphere Samhain Spell
-🕯️ The Veil Walker's Binding
-A ritual for ancestral connection and protective passage through the thinning veil
-
-Seasonal Context:
-The autumn harvest reaches its final breath as October descends towards Samhain — the moment when summer's death becomes winter's gestation. The veil between worlds grows gossamer-thin, and those with sight may glimpse what lies beyond.
-
-Moon Phase:
-Waning Moon moving towards Dark Moon (ideal for shadow work and ancestral communion)
-
-Elements:
-Fire & Spirit
-
-🔥 What You'll Need
-• Orange or black candle (the threshold flame)
-• Dried autumn leaves or herbs (rosemary, mugwort, or sage)
-• Small mirror or reflective surface
-• Photograph of an ancestor or mentor (or blank paper for unknown guides)
-• Apple (symbol of the otherworld)
-• Salt or ash (protection)
-
-🌙 Steps
-1. Cast the Circle
-Sprinkle salt or ash in a circle around your workspace, moving counter-clockwise (the direction of the thinning veil).
-Whisper:
-"As the wheel turns towards the dark,
-I call the guardians, I light the spark."
-
-2. Light the Threshold
-Kindle your candle and gaze into its flame.
-Say:
-"Between the living and the gone,
-Between the dusk and coming dawn,
-I stand where two worlds briefly meet—
-I honour those whose path's complete."
-
-3. Speak to the Mirror
-Hold the mirror before the candle. See your reflection flicker.
-Place the photograph or paper before it.
-Say the name of your ancestor or simply:
-"To those who walked before my time,
-Whose blood runs ancient through this line—
-Show me what I need to see,
-Lend your wisdom, set it free."
-
-4. The Apple Offering
-Cut the apple crosswise to reveal the pentagram star within.
-Eat half slowly, with intention.
-Leave half on your altar or beneath a tree as offering.
-
-5. Burn and Release
-Place dried leaves in a fireproof dish and set them alight with your candle.
-As they burn, say:
-"What must pass, I let it burn.
-What must come, I wait its turn.
-Through smoke and flame, the message sent—
-Between the worlds, my prayer is spent."
-
-6. Close the Veil
-Thank your ancestors. Extinguish the candle with wet fingers (never blow—respect the threshold).
-Break the salt circle, sweeping clockwise.
-Carry the protective herb ash in a small pouch for the season.
-
-✨ Optional Touch:
-Leave a candle burning in your window on Samhain night to guide helpful spirits and honour the beloved dead.`,
-    moonPhase: 'Waning to Dark Moon',
-    element: 'Fire & Spirit',
-  };
+  const tips = useMemo(() => ([
+    {
+      icon: Platform.OS === 'web' ? <MoonIcon size={20} /> : <Text>🌙</Text>,
+      title: 'Moon Phase Magic',
+      tip: 'New moons set intentions, full moons release and manifest. Waxing grows, waning lets go.'
+    },
+    {
+      icon: Platform.OS === 'web' ? <SparklesIcon size={20} /> : <Text>✨</Text>,
+      title: 'Cusp Power',
+      tip: 'On a cusp you can work with both signs. Blend ruling planets and elements for stronger work.'
+    },
+    {
+      icon: Platform.OS === 'web' ? <StarIcon size={20} /> : <Text>⭐</Text>,
+      title: 'Daily Practice',
+      tip: 'Small daily rituals beat rare big ones. Light a candle with intention or speak an affirmation.'
+    }
+  ]), []);
 
   if (loading) {
     return (
@@ -684,34 +160,30 @@ Leave a candle burning in your window on Samhain night to guide helpful spirits 
     );
   }
 
-  // Show paywall if no access
   if (!hasAccess) {
     return (
       <View style={styles.container}>
         <CosmicBackground />
         <SafeAreaView style={styles.safeArea}>
           <ScrollView contentContainerStyle={styles.scrollContent}>
-            {/* Header */}
             <View style={styles.headerCenter}>
               <Text style={styles.title}>Mystic Mish</Text>
               <Text style={styles.subtitle}>Your Cosmic Guide & Ritual Keeper</Text>
             </View>
 
-            {/* Paywall */}
             <LinearGradient
               colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
               style={styles.paywallCard}
             >
               <View style={styles.paywallHeader}>
-                <Crown size={32} color="#d4af37" />
+                {Platform.OS === 'web' ? <CrownIcon size={32} /> : <Text style={{fontSize:28}}>👑</Text>}
                 <Text style={styles.paywallTitle}>Unlock Mystic Mish</Text>
               </View>
-              
+
               <Text style={styles.paywallDescription}>
-                Access Mystic Mish's sacred spells, moon rituals, and cosmic wisdom with Astral Plane.
+                Access Mystic Mish spells, moon rituals, and cosmic wisdom with Astral Plane.
               </Text>
-              
-              {/* Mystic Mish Preview */}
+
               <View style={styles.mishPreviewContainer}>
                 <Image
                   source={mishAvatar}
@@ -726,26 +198,26 @@ Leave a candle burning in your window on Samhain night to guide helpful spirits 
                   </View>
                 )}
               </View>
-              
+
               <View style={styles.featuresList}>
                 <View style={styles.featureItem}>
-                  <Scroll size={16} color="#d4af37" />
-                  <Text style={styles.featureText}>Sacred spells & rituals</Text>
+                  {Platform.OS === 'web' ? <ScrollIcon size={16} /> : <Text>📜</Text>}
+                  <Text style={styles.featureText}>Sacred spells and rituals</Text>
+                </View>
+                <View className="featureItem" style={styles.featureItem}>
+                  {Platform.OS === 'web' ? <MoonIcon size={16} /> : <Text>🌙</Text>}
+                  <Text style={styles.featureText}>Moon phase guidance</Text>
                 </View>
                 <View style={styles.featureItem}>
-                  <Moon size={16} color="#d4af37" />
-                  <Text style={styles.featureText}>Moon phase magic guidance</Text>
+                  {Platform.OS === 'web' ? <SparklesIcon size={16} /> : <Text>✨</Text>}
+                  <Text style={styles.featureText}>Cusp specific practices</Text>
                 </View>
                 <View style={styles.featureItem}>
-                  <Sparkles size={16} color="#d4af37" />
-                  <Text style={styles.featureText}>Cusp-specific magical practices</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <Eye size={16} color="#d4af37" />
-                  <Text style={styles.featureText}>Mystic wisdom & cosmic tips</Text>
+                  {Platform.OS === 'web' ? <EyeIcon size={16} /> : <Text>👁️</Text>}
+                  <Text style={styles.featureText}>Mystic tips</Text>
                 </View>
               </View>
-              
+
               <CosmicButton
                 title="Upgrade to Astral Plane"
                 onPress={handleUpgrade}
@@ -758,24 +230,6 @@ Leave a candle burning in your window on Samhain night to guide helpful spirits 
     );
   }
 
-  const tips = [
-    {
-      icon: <Moon size={20} color="#d4af37" />,
-      title: 'Moon Phase Magic',
-      tip: 'New moons are for setting intentions, full moons for releasing and manifesting. Waxing moons grow your desires, waning moons help you let go.'
-    },
-    {
-      icon: <Sparkles size={20} color="#8b9dc3" />,
-      title: 'Cusp Power',
-      tip: 'If you\'re on a cusp, you have access to dual energies. Use this to your advantage in spells - you can work with both signs\' ruling planets and elements.'
-    },
-    {
-      icon: <Star size={20} color="#d4af37" />,
-      title: 'Daily Practice',
-      tip: 'Small daily rituals are more powerful than elaborate monthly ones. Light a candle with intention, speak an affirmation, or simply pause to connect with cosmic energy.'
-    }
-  ];
-
   return (
     <View style={styles.container}>
       <CosmicBackground />
@@ -787,12 +241,11 @@ Leave a candle burning in your window on Samhain night to guide helpful spirits 
             <Text style={styles.headerSubtitle}>Your Cosmic Guide & Ritual Keeper</Text>
           </View>
 
-          {/* Mish Avatar & Welcome */}
+          {/* Welcome + Avatar */}
           <LinearGradient
             colors={['rgba(212, 175, 55, 0.2)', 'rgba(139, 157, 195, 0.1)']}
             style={styles.welcomeCard}
           >
-            {/* Mystic Mish Avatar */}
             <View style={styles.mishAvatarContainer}>
               <Image
                 source={mishAvatar}
@@ -807,122 +260,78 @@ Leave a candle burning in your window on Samhain night to guide helpful spirits 
                 </View>
               )}
             </View>
-            
+
             <View style={styles.welcomeContent}>
-              <Text style={styles.welcomeTitle}>Welcome, cosmic soul! ✨</Text>
+              <Text style={styles.welcomeTitle}>Welcome, cosmic soul!</Text>
               <Text style={styles.welcomeText}>
-                I'm Mystic Mish, your guide through the celestial realms. I appear when the cosmic energies are ripe for magic and ritual work. 
-                Let me share the ancient wisdom of moon cycles, spell craft, and cosmic timing.
+                I am Mystic Mish. I appear when the sky is ripe for magic and ritual work. Tap the floating Mish on the daily page to push today’s rite here instantly.
               </Text>
             </View>
           </LinearGradient>
 
-          {/* Current Moon Message */}
+          {/* Seasonal header */}
           <LinearGradient
             colors={['rgba(139, 157, 195, 0.25)', 'rgba(75, 0, 130, 0.15)']}
             style={styles.moonMessageCard}
           >
             <View style={styles.moonHeader}>
-              <Moon size={24} color="#d4af37" />
+              {Platform.OS === 'web' ? <MoonIcon size={24} /> : <Text style={{fontSize:20}}>🌙</Text>}
               <Text style={styles.moonTitle}>Seasonal Rituals</Text>
             </View>
-            
             {moonPhase && (
               <Text style={styles.moonPhaseText}>
                 Current Moon: {moonPhase.phase} ({moonPhase.illumination}% illuminated)
               </Text>
             )}
-            
             <Text style={styles.moonMessage}>
-              Southern: Beltane energy is rising 🌸 • Northern: Samhain veil is thinning 🕯️
+              Southern: spring builds toward summer • Northern: autumn deepens toward winter
             </Text>
             <Text style={styles.moonDescription}>
-              Explore your hemisphere’s full ritual below to align with the current seasonal magic.
+              The tab below shows the latest pushed rite. If it looks like Halloween, it will be ignored.
             </Text>
           </LinearGradient>
 
-          {/* Southern Hemisphere Spell */}
-          <View style={styles.spellsSection}>
-            <Text style={styles.sectionTitle}>🌍 Southern Hemisphere — Beltane Ritual</Text>
-            
-            <LinearGradient
-              colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
-              style={styles.spellCard}
-            >
-              <View style={styles.spellHeader}>
-                <Scroll size={20} color="#d4af37" />
-                <Text style={styles.spellTitle}>{southernEclipseSpell.title}</Text>
-              </View>
-              
-              <Text style={styles.spellSubtitle}>{southernEclipseSpell.subtitle}</Text>
-              <Text style={styles.spellDescription}>{southernEclipseSpell.description}</Text>
-              
-              <View style={styles.seasonalContextContainer}>
-                <Text style={styles.seasonalContextTitle}>Seasonal Context:</Text>
-                <Text style={styles.seasonalContextText}>{southernEclipseSpell.seasonalContext}</Text>
-              </View>
-              
-              <View style={styles.spellDetails}>
-                <View style={styles.spellDetailItem}>
-                  <Text style={styles.spellDetailLabel}>Moon Phase:</Text>
-                  <Text style={styles.spellDetailValue}>{southernEclipseSpell.moonPhase}</Text>
+          {/* Live ritual block from listener */}
+          {ritual ? (
+            <View style={styles.spellsSection}>
+              <Text style={styles.sectionTitle}>{ritual.title || 'Mystic Mish Rite'}</Text>
+              <LinearGradient
+                colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
+                style={styles.spellCard}
+              >
+                <View style={styles.spellHeader}>
+                  {Platform.OS === 'web' ? <ScrollIcon size={20} /> : <Text>📜</Text>}
+                  <Text style={styles.spellTitle}>{ritual.title || 'Spell'}</Text>
                 </View>
-                <View style={styles.spellDetailItem}>
-                  <Text style={styles.spellDetailLabel}>Elements:</Text>
-                  <Text style={styles.spellDetailValue}>{southernEclipseSpell.element}</Text>
+                <View style={styles.fullSpellContainer}>
+                  <Text style={styles.fullSpellText}>{ritual.body}</Text>
                 </View>
-              </View>
-              
-              <View style={styles.fullSpellContainer}>
-                <Text style={styles.fullSpellTitle}>The Ritual:</Text>
-                <Text style={styles.fullSpellText}>{southernEclipseSpell.fullSpell}</Text>
-              </View>
-            </LinearGradient>
-          </View>
+                {ritual.version ? (
+                  <Text style={{ color: '#8b9dc3', fontSize: 12, marginTop: 8, textAlign: 'center' }}>
+                    {ritual.version}
+                  </Text>
+                ) : null}
+              </LinearGradient>
+            </View>
+          ) : (
+            <View style={styles.spellsSection}>
+              <Text style={styles.sectionTitle}>Mystic Mish Rite</Text>
+              <LinearGradient
+                colors={['rgba(139, 157, 195, 0.15)', 'rgba(139, 157, 195, 0.05)']}
+                style={styles.spellCard}
+              >
+                <View style={styles.fullSpellContainer}>
+                  <Text style={styles.fullSpellText}>
+                    Tap the floating Mish on the Daily page to reveal today’s rite. If a rite was already sent, reload this tab.
+                  </Text>
+                </View>
+              </LinearGradient>
+            </View>
+          )}
 
-          {/* Northern Hemisphere Spell */}
-          <View style={styles.spellsSection}>
-            <Text style={styles.sectionTitle}>🌎 Northern Hemisphere — Samhain Ritual</Text>
-            
-            <LinearGradient
-              colors={['rgba(139, 157, 195, 0.15)', 'rgba(139, 157, 195, 0.05)']}
-              style={styles.spellCard}
-            >
-              <View style={styles.spellHeader}>
-                <Scroll size={20} color="#8b9dc3" />
-                <Text style={styles.spellTitle}>{northernEclipseSpell.title}</Text>
-              </View>
-              
-              <Text style={styles.spellSubtitle}>{northernEclipseSpell.subtitle}</Text>
-              <Text style={styles.spellDescription}>{northernEclipseSpell.description}</Text>
-              
-              <View style={styles.seasonalContextContainer}>
-                <Text style={styles.seasonalContextTitle}>Seasonal Context:</Text>
-                <Text style={styles.seasonalContextText}>{northernEclipseSpell.seasonalContext}</Text>
-              </View>
-              
-              <View style={styles.spellDetails}>
-                <View style={styles.spellDetailItem}>
-                  <Text style={styles.spellDetailLabel}>Moon Phase:</Text>
-                  <Text style={styles.spellDetailValue}>{northernEclipseSpell.moonPhase}</Text>
-                </View>
-                <View style={styles.spellDetailItem}>
-                  <Text style={styles.spellDetailLabel}>Elements:</Text>
-                  <Text style={styles.spellDetailValue}>{northernEclipseSpell.element}</Text>
-                </View>
-              </View>
-              
-              <View style={styles.fullSpellContainer}>
-                <Text style={styles.fullSpellTitle}>The Ritual:</Text>
-                <Text style={styles.fullSpellText}>{northernEclipseSpell.fullSpell}</Text>
-              </View>
-            </LinearGradient>
-          </View>
-
-          {/* Mystic Tips */}
+          {/* Tips */}
           <View style={styles.tipsSection}>
-            <Text style={styles.sectionTitle}>Mish's Cosmic Tips</Text>
-            
+            <Text style={styles.sectionTitle}>Mish’s Cosmic Tips</Text>
             {tips.map((tip) => (
               <LinearGradient
                 key={tip.title}
@@ -938,22 +347,19 @@ Leave a candle burning in your window on Samhain night to guide helpful spirits 
             ))}
           </View>
 
-          {/* Mish's Wisdom */}
+          {/* Closing */}
           <LinearGradient
             colors={['rgba(212, 175, 55, 0.2)', 'rgba(139, 157, 195, 0.1)']}
             style={styles.wisdomCard}
           >
             <View style={styles.wisdomHeader}>
-              <Eye size={24} color="#d4af37" />
-              <Text style={styles.wisdomTitle}>Mish's Final Wisdom</Text>
+              {Platform.OS === 'web' ? <EyeIcon size={24} /> : <Text style={{fontSize:20}}>👁️</Text>}
+              <Text style={styles.wisdomTitle}>Mish’s Final Wisdom</Text>
             </View>
             <Text style={styles.wisdomText}>
-              "Remember, dear cosmic soul - magic isn't about the perfect ritual or the right tools. 
-              It's about your intention, your connection to the universe, and your willingness to believe 
-              in the unseen forces that guide us all. Trust your intuition, honor the moon cycles, 
-              and let your unique cosmic position be your greatest strength."
+              Magic is intention plus attention. Your tools are optional, your focus is everything.
             </Text>
-            <Text style={styles.wisdomSignature}>— Mystic Mish ✨</Text>
+            <Text style={styles.wisdomSignature}>Mystic Mish ✨</Text>
           </LinearGradient>
         </ScrollView>
       </SafeAreaView>
@@ -962,421 +368,56 @@ Leave a candle burning in your window on Samhain night to guide helpful spirits 
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-  },
-  headerCenter: {
-    alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 24,
-  },
-  title: {
-    fontSize: 36,
-    fontFamily: 'PlayfairDisplay-Bold',
-    color: '#e8e8e8',
-    textAlign: 'center',
-    letterSpacing: 2,
-  },
-  subtitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-Regular',
-    color: '#8b9dc3',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  welcomeCard: {
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.3)',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  mishAvatarSimple: {
-    position: 'relative',
-    width: 80,
-    height: 95,
-    marginRight: 20,
-  },
-  mishAvatarContainer: {
-    position: 'relative',
-    width: 80,
-    height: 95,
-    marginRight: 20,
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#d4af37',
-  },
-  mishAvatar: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 18,
-  },
-  mishAvatarFallback: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: 80,
-    height: 95,
-    borderRadius: 18,
-    backgroundColor: 'rgba(139, 157, 195, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mishPreviewContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#d4af37',
-    width: 100,
-    height: 120,
-  },
-  mishPreviewImage: {
-    width: '100%',
-    height: '100%',
-  },
-  mishPreviewFallback: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(139, 157, 195, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  welcomeContent: {
-    flex: 1,
-  },
-  welcomeTitle: {
-    fontSize: 22,
-    fontFamily: 'PlayfairDisplay-Bold',
-    color: '#d4af37',
-    marginBottom: 8,
-  },
-  welcomeText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: '#e8e8e8',
-    lineHeight: 20,
-  },
-  moonMessageCard: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 2,
-    borderColor: '#FFD700',
-  },
-  moonHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  moonTitle: {
-    fontSize: 20,
-    fontFamily: 'PlayfairDisplay-Bold',
-    color: '#d4af37',
-    marginLeft: 8,
-  },
-  moonPhaseText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: '#FFD700',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  moonMessage: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-    color: '#FFD700',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  moonDescription: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: '#ffffff',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  spellsSection: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 28,
-    fontFamily: 'PlayfairDisplay-Bold',
-    color: '#e8e8e8',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  spellCard: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.3)',
-  },
-  spellHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  spellTitle: {
-    fontSize: 20,
-    fontFamily: 'PlayfairDisplay-Bold',
-    color: '#e8e8e8',
-    marginLeft: 8,
-  },
-  spellSubtitle: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    color: '#d4af37',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  spellDescription: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: '#e8e8e8',
-    lineHeight: 20,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  spellDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingHorizontal: 20,
-  },
-  spellDetailItem: {
-    alignItems: 'center',
-  },
-  spellDetailLabel: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: '#8b9dc3',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  spellDetailValue: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: '#d4af37',
-  },
-  fullSpellContainer: {
-    backgroundColor: 'rgba(26, 26, 46, 0.4)',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 157, 195, 0.2)',
-  },
-  fullSpellTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-    color: '#d4af37',
-    marginBottom: 8,
-  },
-  fullSpellText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: '#e8e8e8',
-    lineHeight: 20,
-    fontStyle: 'italic',
-  },
-  seasonalContextContainer: {
-    backgroundColor: 'rgba(26, 26, 46, 0.4)',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 157, 195, 0.2)',
-  },
-  seasonalContextTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: '#8b9dc3',
-    marginBottom: 4,
-  },
-  seasonalContextText: {
-    fontSize: 15,
-    fontFamily: 'Inter-Regular',
-    color: '#e8e8e8',
-    lineHeight: 18,
-    fontStyle: 'italic',
-  },
-  tipsSection: {
-    marginBottom: 32,
-  },
-  tipCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 157, 195, 0.3)',
-  },
-  tipHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  tipTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-    color: '#e8e8e8',
-    marginLeft: 8,
-  },
-  tipText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: '#e8e8e8',
-    lineHeight: 20,
-  },
-  wisdomCard: {
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 2,
-    borderColor: 'rgba(212, 175, 55, 0.4)',
-  },
-  wisdomHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  wisdomTitle: {
-    fontSize: 22,
-    fontFamily: 'PlayfairDisplay-Bold',
-    color: '#d4af37',
-    marginLeft: 8,
-  },
-  wisdomText: {
-    fontSize: 18,
-    fontFamily: 'Inter-Regular',
-    color: '#e8e8e8',
-    lineHeight: 24,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginBottom: 12,
-  },
-  wisdomSignature: {
-    fontSize: 16,
-    fontFamily: 'PlayfairDisplay-Bold',
-    color: '#d4af37',
-    textAlign: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 18,
-    fontFamily: 'Inter-Regular',
-    color: '#8b9dc3',
-    marginTop: 12,
-  },
-  paywallCard: {
-    borderRadius: 16,
-    padding: 24,
-    marginTop: 40,
-    borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.3)',
-    alignItems: 'center',
-  },
-  paywallHeader: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  paywallTitle: {
-    fontSize: 32,
-    fontFamily: 'PlayfairDisplay-Bold',
-    color: '#d4af37',
-    marginTop: 12,
-    textAlign: 'center',
-    marginBottom: 16,
-    ...Platform.select({
-      web: {
-        textShadow: '1px 1px 2px #4B0082',
-      },
-      default: {
-        textShadowColor: '#4B0082',
-        textShadowOffset: { width: 1, height: 1 },
-        textShadowRadius: 2,
-      },
-    }),
-  },
-  mishPreviewSimple: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  mishEmojiLarge: {
-    fontSize: 60,
-    marginBottom: 8,
-  },
-  mishNameLarge: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: '#FFD700',
-    textAlign: 'center',
-  },
-  paywallDescription: {
-    fontSize: 20,
-    fontFamily: 'Vazirmatn-Regular',
-    color: '#e8e8e8',
-    textAlign: 'center',
-    lineHeight: 26,
-    marginBottom: 24,
-  },
-  featuresList: {
-    gap: 12,
-    marginBottom: 32,
-    width: '100%',
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  featureText: {
-    fontSize: 18,
-    fontFamily: 'Vazirmatn-Medium',
-    color: '#e8e8e8',
-    marginLeft: 12,
-  },
-  upgradeButton: {
-    minWidth: 200,
-  },
-  headerIcon: {
-    fontSize: 48,
-    marginBottom: 6,
-    color: '#d4af37',
-  },
-  headerTitle: {
-    fontSize: 26,
-    color: '#e8e8e8',
-    fontFamily: 'Vazirmatn-Bold',
-    textAlign: 'center',
-  },
-  headerSubtitle: {
-    marginTop: 4,
-    color: '#8b9dc3',
-    fontSize: 16,
-    fontFamily: 'Vazirmatn-Regular',
-    textAlign: 'center',
-  },
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
+  headerCenter: { alignItems: 'center', paddingTop: 20, paddingBottom: 24 },
+  title: { fontSize: 36, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', textAlign: 'center', letterSpacing: 2 },
+  subtitle: { fontSize: 18, fontFamily: 'Inter-Regular', color: '#8b9dc3', textAlign: 'center', marginTop: 4 },
+  welcomeCard: { borderRadius: 16, padding: 24, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)', flexDirection: 'row', alignItems: 'center' },
+  mishAvatarContainer: { position: 'relative', width: 80, height: 95, marginRight: 20, borderRadius: 18, overflow: 'hidden', borderWidth: 2, borderColor: '#d4af37' },
+  mishAvatar: { width: '100%', height: '100%', borderRadius: 18 },
+  mishAvatarFallback: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' },
+  mishEmojiLarge: { fontSize: 60, marginBottom: 8 },
+  mishNameLarge: { fontSize: 14, fontFamily: 'Inter-SemiBold', color: '#FFD700', textAlign: 'center' },
+  welcomeContent: { flex: 1 },
+  welcomeTitle: { fontSize: 22, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginBottom: 8 },
+  welcomeText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20 },
+  moonMessageCard: { borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 2, borderColor: '#FFD700' },
+  moonHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 },
+  moonTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37' },
+  moonPhaseText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#FFD700', textAlign: 'center', marginBottom: 12 },
+  moonMessage: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#FFD700', textAlign: 'center', marginBottom: 8 },
+  moonDescription: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#ffffff', textAlign: 'center', lineHeight: 20 },
+  spellsSection: { marginBottom: 32 },
+  sectionTitle: { fontSize: 28, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', textAlign: 'center', marginBottom: 20 },
+  spellCard: { borderRadius: 16, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)' },
+  spellHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  spellTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8' },
+  fullSpellContainer: { backgroundColor: 'rgba(26, 26, 46, 0.4)', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.2)' },
+  fullSpellText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20, fontStyle: 'italic', whiteSpace: 'pre-wrap' },
+  tipsSection: { marginBottom: 32 },
+  tipCard: { borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.3)' },
+  tipHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  tipTitle: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#e8e8e8' },
+  tipText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20 },
+  wisdomCard: { borderRadius: 16, padding: 24, borderWidth: 2, borderColor: 'rgba(212, 175, 55, 0.4)' },
+  wisdomHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16, gap: 8 },
+  wisdomTitle: { fontSize: 22, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37' },
+  wisdomText: { fontSize: 18, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 24, textAlign: 'center', fontStyle: 'italic', marginBottom: 12 },
+  wisdomSignature: { fontSize: 16, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', textAlign: 'center' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { fontSize: 18, fontFamily: 'Inter-Regular', color: '#8b9dc3', marginTop: 12 },
+  paywallCard: { borderRadius: 16, padding: 24, marginTop: 40, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)', alignItems: 'center' },
+  paywallHeader: { alignItems: 'center', marginBottom: 24 },
+  paywallTitle: { fontSize: 32, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginTop: 12, textAlign: 'center' },
+  mishPreviewContainer: { alignItems: 'center', marginBottom: 24, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: '#d4af37', width: 100, height: 120 },
+  mishPreviewImage: { width: '100%', height: '100%' },
+  mishPreviewFallback: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' },
+  featureItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  featureText: { fontSize: 18, fontFamily: 'Vazirmatn-Medium', color: '#e8e8e8', marginLeft: 12 },
+  upgradeButton: { minWidth: 200 },
+  headerIcon: { fontSize: 48, marginBottom: 6, color: '#d4af37' },
+  headerTitle: { fontSize: 26, color: '#e8e8e8', fontFamily: 'Vazirmatn-Bold', textAlign: 'center' },
+  headerSubtitle: { marginTop: 4, color: '#8b9dc3', fontSize: 16, fontFamily: 'Vazirmatn-Regular', textAlign: 'center' }
 });
