@@ -1,4 +1,4 @@
-// components/MysticMish.tsx
+// components/MysticMish.tsx 
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
