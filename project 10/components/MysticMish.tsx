@@ -1,4 +1,4 @@
-// components/MysticMish.tsx 
+// components/MysticMish.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -28,7 +28,7 @@ interface MysticMishProps {
   hemisphere: 'Northern' | 'Southern';
 }
 
-// Ritual data (kept as-is; currently unused in the welcome line, but ready for future variants)
+// Ritual data
 const RITUALS = {
   newMoon: [
     "🌑 **New Moon Manifestation**: Write your intentions on paper, fold it three times, and place it under your pillow.",
@@ -41,7 +41,7 @@ const RITUALS = {
   waxingCrescent: [
     "🌒 **Crescent Growth**: Place a silver coin in water overnight, then use the water to nurture a plant.",
     "📝 **Intention Amplification**: Write your goals with green ink and place the paper where moonlight can touch it.",
-    "🔮 **Forward Motion**: Walk clockwise in a circle while visualizing your dreams growing stronger.",
+    "🔮 **Forward Motion**: Walk clockwise in a circle while visualising your dreams growing stronger.",
     "💬 **Voice Reclamation Ritual** (Mercury Direct): Write sigils over your journal with lemon balm ink to reclaim your authentic voice. *Mish's Tip: Your words are spells—choose them like magic.*"
   ],
   firstQuarter: [
@@ -63,22 +63,32 @@ const RITUALS = {
     "🌕 **Electric Thread Ritual** (Aquarius Full Moon): Tie silver thread around your wrist, hold the other end to the moon saying: 'I am connected, expanded, awake.' Write 3 visionary ideas with actions. *Mish's Tip: The world needs your weird—honour your unique code.*"
   ],
   waningGibbous: [
-    "🌖 **Gratitude Flow**: List all that you're thankful for and speak each item aloud.",
-    "🧹 **Gentle Clearing**: Sweep your home with intention, visualizing clearing away stagnant energy.",
+    "🌖 **Gratitude Flow**: List all that you are thankful for and speak each item aloud.",
+    "🧹 **Gentle Clearing**: Sweep your home with intention, visualising clearing away stagnant energy.",
     "🍵 **Healing Tea**: Brew a cup of tea with healing intention, sipping slowly and mindfully.",
     "💫 **Glamour Spell** (Venus in Leo): Use rose petals and gold shimmer to amplify your magnetism. *Mish's Tip: You are the magic—dress like it.*"
   ],
   lastQuarter: [
     "🌗 **Release Ritual**: Write down what no longer serves you and tear the paper into pieces.",
     "🧿 **Protection Working**: Place a blue object near your door to ward off negative energy.",
-    "🔄 **Cycle Completion**: Draw a circle and divide it in four, marking what phase of life you're in.",
+    "🔄 **Cycle Completion**: Draw a circle and divide it in four, marking what phase of life you are in.",
   ],
   waningCrescent: [
-    "🌘 **Final Release**: Wash your hands in salt water to cleanse away the last of what you're releasing.",
-    "🌿 **Rest & Recover**: Create a small altar with restful items like lavender or chamomile.",
+    "🌘 **Final Release**: Wash your hands in salt water to cleanse away the last of what you are releasing.",
+    "🌿 **Rest and Recover**: Create a small altar with restful items like lavender or chamomile.",
     "📉 **Surrender Practice**: Write 'I release control of...' and complete the sentence five times.",
     "🪐 **Money Altar Refresh** (Jupiter Retrograde): Refresh your abundance altar with cinnamon, coins, and gratitude. *Mish's Tip: Abundance flows to grateful hearts.*"
   ],
+
+  // 🔮 Cosmic event spells for November
+  cosmicNovember: {
+    microNewMoonScorpio: {
+      Southern:
+        "🌑 **Southern Hemisphere — The Blooming Serpent Spell**\nA ritual for shedding old skins and birthing authentic power as spring matures.\n\nSeasonal Context: Spring is abundant. The Micro New Moon in Scorpio asks for inner renewal before summer expansion.\nMoon Phase: Micro New Moon\nElements: Water and Fire\n\n1) Prepare the Stillness\nLight a candle and gaze into a dark bowl of water.\nSay: 'From light to shadow and back again, I shed what no longer lives within.'\n\n2) Salt Purification\nSprinkle a pinch of salt into the water.\nSay: 'In purity I return to truth, in silence I reclaim my youth.'\n\n3) Serpent Invocation\nHold a fresh flower or leaf and picture the ancient serpent beneath you.\nSay: 'I am the one who blooms and sheds. Through release I reclaim my soul.'\n\n4) Offer Back\nDip the flower in the water and return it to the earth.\nWhisper: 'I give what no longer serves, that I may live in my full curve.'\n\n5) Close\nExtinguish the candle. In the morning pour the water at the base of a tree.",
+      Northern:
+        "🌑 **Northern Hemisphere — The Serpent’s Shadow Spell**\nA ritual for surrender, truth, and regeneration as autumn deepens.\n\nSeasonal Context: The land enters quiet. The Micro New Moon in Scorpio invites honest release before winter.\nMoon Phase: Micro New Moon\nElements: Water and Earth\n\n1) Cast the Quiet\nLight a black candle and reflect its flame in a dark bowl of water.\nSay: 'As the wheel turns towards the night, I shed what dims my sacred light.'\n\n2) Salt of Truth\nDrop salt into the water and stir slowly.\nSay: 'Through water’s calm I see my core. I am reborn through what I restore.'\n\n3) Call Renewal\nHold dried leaves or herbs and feel their texture.\nSay: 'I am the one who changes form. Through shadow’s gift I come to see.'\n\n4) Lay to Rest\nBurn or bury the leaves with gratitude.\nWhisper: 'With grace I end, with peace I rest. What fades now leaves me blessed.'\n\n5) Close\nExtinguish the candle with wet fingers. Pour the water to bare earth the next day."
+    },
+  },
 };
 
 export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishProps) {
@@ -99,12 +109,28 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
   const scaleAnimation = useRef(new Animated.Value(1)).current;
   const wiggleAnimation = useRef(new Animated.Value(0)).current;
 
+  const pickCosmicRitualIfApplicable = () => {
+    // Show Micro New Moon in Scorpio spell on 20 November
+    const now = new Date();
+    const isNovember = now.getMonth() === 10; // 0 based, 10 is November
+    const isTwenty = now.getDate() === 20;
+
+    if (isNovember && isTwenty) {
+      const spell =
+        RITUALS.cosmicNovember?.microNewMoonScorpio?.[
+          hemisphere === 'Southern' ? 'Southern' : 'Northern'
+        ];
+      if (spell) return spell;
+    }
+
+    return null;
+  };
+
   const checkRitualTime = async () => {
     const currentMoon = getCurrentMoonPhase();
     setMoonPhase(currentMoon);
 
     try {
-      // Try with hemisphere if your util supports it; fall back otherwise
       const positions =
         typeof getCurrentPlanetaryPositionsEnhanced === 'function'
           ? await getCurrentPlanetaryPositionsEnhanced(hemisphere as any)
@@ -114,12 +140,14 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
       setPlanetaryPositions([]);
     }
 
-    // Your current default message (kept intact)
+    // Select special November spell if applicable, otherwise default
+    const cosmic = pickCosmicRitualIfApplicable();
+
     const welcomeRitual =
-      'Spooky! Halloween is nearby and there is some prep to do before unleashing with spells!- see the Mystic Mish tab to find out';
+      'November holds one of the most potent dual portals in the witch’s wheel: Lunar Transformation and Revolutionary Release! See the Mystic Mish tab to find out more.';
 
     if (isMounted.current) {
-      setCurrentRitual(welcomeRitual);
+      setCurrentRitual(cosmic || welcomeRitual);
       setIsVisible(true);
       startAnimations();
     }
@@ -137,7 +165,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
       ])
     ).start();
 
-    // Sparkle pulse/rotate
+    // Sparkle pulse and rotate
     Animated.loop(
       Animated.timing(sparkleAnimation, { toValue: 1, duration: 2000, useNativeDriver: true })
     ).start();
@@ -172,20 +200,19 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
   useEffect(() => {
     isMounted.current = true;
 
-    // Soft subscription check (does NOT gate rendering)
+    // Soft subscription check
     const checkAccess = async () => {
       try {
         const { getSubscriptionStatus } = await import('@/utils/billing');
         const subscriptionStatus = await getSubscriptionStatus();
         console.log('🔍 [MysticMish] Subscription check:', subscriptionStatus);
         if (isMounted.current) {
-          // allow if active is true OR undefined
           const allowed = subscriptionStatus?.active !== false;
           setHasAccess(allowed);
         }
       } catch (error) {
         console.error('❌ [MysticMish] Access check error:', error);
-        if (isMounted.current) setHasAccess(true); // fail-open to keep Mish visible
+        if (isMounted.current) setHasAccess(true);
       }
     };
 
@@ -207,7 +234,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hemisphere]);
 
-  // Auto-hide ritual popup after a while (keeps avatar visible)
+  // Auto-hide ritual popup after a while
   useEffect(() => {
     if (!showRitual) return;
     const timer = setTimeout(() => {
@@ -216,7 +243,6 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
     return () => clearTimeout(timer);
   }, [showRitual]);
 
-  // 🔑 IMPORTANT: we no longer gate on hasAccess here
   if (!isVisible) return null;
 
   const floatTransform = floatAnimation.interpolate({
@@ -270,7 +296,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
       {/* Mystic Mish character */}
       <Animated.View style={[styles.mishContainer, { transform: getTransforms() }]}>
         <TouchableOpacity onPress={handleMishTap} style={styles.mishTouchable} activeOpacity={0.8}>
-          {/* Sparkles (skip for iOS to avoid native driver warnings) */}
+          {/* Sparkles */}
           {Platform.OS !== 'ios' && (
             <>
               <Animated.View
@@ -343,7 +369,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 120, // near the Daily title
+    top: 120,
     left: 15,
     zIndex: 1000,
     pointerEvents: 'box-none',
