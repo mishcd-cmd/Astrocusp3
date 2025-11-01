@@ -91,7 +91,38 @@ const RITUALS = {
   }
 };
 
-const BUILD_TAG = 'MysticMish v2025-11-01b';
+const BUILD_TAG = 'MysticMish v2025-11-01c';
+
+// —— NEW: simple cache clearer for stale Halloween/Samhain content
+function clearHalloweenArtifacts() {
+  if (typeof window === 'undefined') return;
+  const candidates = [
+    'mish.ritual',
+    'mish.ritual.current',
+    'mysticMish.tabRitual',
+    'cusp_ritual_cache',
+    'ritual_text',
+  ];
+  const spookyMarkers = ['Halloween', 'Samhain', 'Veil Walker', 'pumpkin', 'thinning veil'];
+  try {
+    candidates.forEach((k) => {
+      const v = window.localStorage.getItem(k);
+      if (v && spookyMarkers.some((m) => v.includes(m))) {
+        window.localStorage.removeItem(k);
+      }
+    });
+  } catch {}
+}
+
+// —— NEW: emit the ritual to the tab and persist it so UI updates immediately
+function emitRitualToTab(payload: { title: string; body: string; version: string }) {
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem('mish.ritual', JSON.stringify(payload));
+      window.dispatchEvent(new CustomEvent('mish:ritual', { detail: payload }));
+    } catch {}
+  }
+}
 
 export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishProps) {
   const [isVisible, setIsVisible] = useState(false);
@@ -115,9 +146,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
   const getNovemberSpellForTab = (): string | null => {
     const now = new Date();
     const isNovember = now.getMonth() === 10; // 0 based
-    const isNov20 = now.getDate() === 20;
-
-    if (isNovember && isNov20) {
+    if (isNovember) {
       const key = hemisphere === 'Southern' ? 'Southern' : 'Northern';
       const spell = RITUALS.cosmicNovember?.microNewMoonScorpio?.[key];
       return spell || null;
@@ -127,7 +156,6 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
 
   // Teaser text for the little popup only
   const getTeaserText = (): string => {
-    // Short, month aware, and not Halloween
     const now = new Date();
     const isNovember = now.getMonth() === 10;
     if (isNovember) {
@@ -153,17 +181,23 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
     // Always keep the popup as a teaser only
     const teaser = getTeaserText();
 
-    // Send the full November spell to the tab if applicable
+    // Send the full November spell to the tab if applicable, and also emit to storage/event
     const tabSpell = getNovemberSpellForTab();
-    if (tabSpell && onRitualReveal) {
-      try {
-        onRitualReveal(tabSpell);
-        console.log('[MysticMish] build=', BUILD_TAG, 'sent tab spell for', hemisphere);
-      } catch (e) {
-        console.warn('[MysticMish] onRitualReveal error', e);
+    if (tabSpell) {
+      const payload = {
+        title: 'The Serpent Rite of November',
+        body: tabSpell,
+        version: BUILD_TAG,
+      };
+      emitRitualToTab(payload);
+      if (onRitualReveal) {
+        try {
+          onRitualReveal(tabSpell);
+        } catch {}
       }
+      console.log('[MysticMish] build=', BUILD_TAG, 'pushed tab ritual for', hemisphere);
     } else {
-      console.log('[MysticMish] build=', BUILD_TAG, 'no special tab spell today');
+      console.log('[MysticMish] build=', BUILD_TAG, 'no special tab ritual today');
     }
 
     if (isMounted.current) {
@@ -207,13 +241,23 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
       if (isMounted.current) {
         setIsAnimating(false);
         setShowRitual(true);
-        onRitualReveal?.(getNovemberSpellForTab() || 'Open the Mystic Mish tab for today’s rite.');
+        const tabSpell = getNovemberSpellForTab();
+        if (tabSpell) {
+          const payload = { title: 'The Serpent Rite of November', body: tabSpell, version: BUILD_TAG };
+          emitRitualToTab(payload);
+          onRitualReveal?.(tabSpell);
+        } else {
+          onRitualReveal?.("Open the Mystic Mish tab for today’s rite.");
+        }
       }
     });
   };
 
   useEffect(() => {
     isMounted.current = true;
+
+    // clear old Halloween/Samhain cache on mount
+    clearHalloweenArtifacts();
 
     const checkAccess = async () => {
       try {
@@ -299,7 +343,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
             <Text style={styles.moonPhaseText}>
               Current Moon: {moonPhase.phase} ({moonPhase.illumination}%)
             </Text>
-            <Text style={styles.ritualText}>{currentRitual}  •  {BUILD_TAG}</Text>
+            <Text style={styles.ritualText}>{'November gateway active. Tap Mish to open today’s rite in the Mystic Mish tab.'}  •  {BUILD_TAG}</Text>
             <TouchableOpacity style={styles.closeButton} onPress={() => setShowRitual(false)}>
               <Text style={styles.closeButtonText}>Thank you, Mish! 🌟</Text>
             </TouchableOpacity>
