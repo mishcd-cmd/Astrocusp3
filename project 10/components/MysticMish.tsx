@@ -18,23 +18,23 @@ if (typeof Platform === 'undefined') {
   (global as any).Platform = { OS: 'web' };
 }
 
-// Pre-import the avatar image
+// ✅ Pre-import the avatar image for better type safety
 const mishAvatar = require('../assets/images/mystic-mish/headshot.png');
 
 const { width: screenWidth } = Dimensions.get('window');
 
 interface MysticMishProps {
-  onRitualReveal?: (ritual: string) => void;
+  onRitualReveal?: (ritual: string) => void; // receives the full ritual for the Mystic Mish tab
   hemisphere: 'Northern' | 'Southern';
 }
 
-// Ritual data
+// 🔮 Ritual data (no em dashes)
 const RITUALS = {
   newMoon: [
     "🌑 **New Moon Manifestation**: Write your intentions on paper, fold it three times, and place it under your pillow.",
     "🕯️ **Fresh Start Ritual**: Light a black candle to banish old energy, then a white one for new beginnings.",
     "✨ **Seed Planting**: Write down three goals and bury the paper in a small pot with a seed or plant.",
-    "🌑 **Spell of the Silver Seed**: The new moon is coming on the 23rd - A ritual for planting new beginnings under the dark sky of the New Moon - see full spell.",
+    "🌑 **Spell of the Silver Seed**: The new moon is coming on the 23rd - a ritual for planting new beginnings under the dark sky of the New Moon - see full spell.",
     "🦁 **Fire Mirror Ritual** (Leo New Moon): Light a gold candle in front of a mirror. Gaze at your reflection and whisper: 'I see the fire. I call it higher.' Write self-praise on a bay leaf and burn it safely. *Mish's Tip: Confidence is a spell. Cast it daily with your posture and voice.*",
     "♍ **Herbal Pouch Spell** (Virgo New Moon): Create a pouch with lavender, rosemary, and quartz for cleansing routines. *Mish's Tip: Your daily rituals are spells. Make them sacred.*"
   ],
@@ -42,7 +42,7 @@ const RITUALS = {
     "🌒 **Crescent Growth**: Place a silver coin in water overnight, then use the water to nurture a plant.",
     "📝 **Intention Amplification**: Write your goals with green ink and place the paper where moonlight can touch it.",
     "🔮 **Forward Motion**: Walk clockwise in a circle while visualising your dreams growing stronger.",
-    "💬 **Voice Reclamation Ritual** (Mercury Direct): Write sigils over your journal with lemon balm ink to reclaim your authentic voice. *Mish's Tip: Your words are spells. Choose them like magic.*"
+    "💬 **Voice Reclamation Ritual** (Mercury Direct): Draw a sigil over your journal page with lemon balm ink to reclaim your authentic voice. *Mish's Tip: Your words are spells. Choose them like magic.*"
   ],
   firstQuarter: [
     "🌓 **Decision Ritual**: Place two candles representing choices, light the one that feels right.",
@@ -53,18 +53,18 @@ const RITUALS = {
     "🌔 **Refinement Spell**: Edit a list of goals, making them more specific and aligned.",
     "✂️ **Cutting Away**: Use scissors to cut paper representing obstacles in your path.",
     "📈 **Energy Building**: Charge a crystal in sunlight, then carry it close to your heart.",
-    "🪐 **Portal of Prosperity** (Lionsgate 8/8): Arrange 8 coins in an infinity shape with citrine at centre. Sip sun-charged water and journal: 'I open the gate. I walk with fate.' *Mish's Tip: Think bigger. Manifest worth, not only wealth.*",
-    "💖 **Rose Water Love Bath** (Venus-Jupiter): Add rose petals to your bath for soul-nourishing love and abundance. *Mish's Tip: Love yourself first. The universe is watching.*"
+    "🪐 **Portal of Prosperity** (Lionsgate 8/8): Arrange 8 coins in an infinity shape with citrine at centre. Sip sun charged water and journal: 'I open the gate. I walk with fate.' *Mish's Tip: Think bigger. Manifest worth, not just wealth.*",
+    "💖 **Rose Water Love Bath** (Venus Jupiter): Add rose petals to your bath for soul nourishing love and abundance. *Mish's Tip: Love yourself first. The universe is watching.*"
   ],
   fullMoon: [
     "🌕 **Full Moon Release**: Write what you want to release on paper and safely burn it under moonlight.",
     "💧 **Moon Water Blessing**: Place a bowl of water under the full moon to charge it with lunar energy.",
     "✨ **Illumination Ritual**: Meditate with a white candle and ask for clarity on your path.",
-    "🌕 **Electric Thread Ritual** (Aquarius Full Moon): Tie silver thread around your wrist, hold the other end to the moon saying: 'I am connected, expanded, awake.' Write three visionary ideas with actions. *Mish's Tip: The world needs your weird. Honour your unique code.*"
+    "🌕 **Electric Thread Ritual** (Aquarius Full Moon): Tie silver thread around your wrist, hold the other end to the moon, and say: 'I am connected, expanded, awake.' Write three visionary ideas with actions. *Mish's Tip: The world needs your weird. Honour your unique code.*"
   ],
   waningGibbous: [
     "🌖 **Gratitude Flow**: List all that you are thankful for and speak each item aloud.",
-    "🧹 **Gentle Clearing**: Sweep your home with intention, visualising clearing away stagnant energy.",
+    "🧹 **Gentle Clearing**: Sweep your home with intention, visualising the removal of stagnant energy.",
     "🍵 **Healing Tea**: Brew a cup of tea with healing intention, sipping slowly and mindfully.",
     "💫 **Glamour Spell** (Venus in Leo): Use rose petals and gold shimmer to amplify your magnetism. *Mish's Tip: You are the magic. Dress like it.*"
   ],
@@ -80,72 +80,18 @@ const RITUALS = {
     "🪐 **Money Altar Refresh** (Jupiter Retrograde): Refresh your abundance altar with cinnamon, coins, and gratitude. *Mish's Tip: Abundance flows to grateful hearts.*"
   ],
 
-  // Cosmic event spells for November
+  // 🔮 Cosmic event spells for November (no em dashes)
   cosmicNovember: {
-    openingPortal: {
-      Southern:
-        "🌿 November Portal Spell - Southern\nA short rite to open clear spring paths.\nElements: Air and Earth\n1) Sweep the air above your crown three times with a leaf or feather.\n2) Place a pinch of soil on your palm and say: 'I walk a clear path in growing light.'\n3) Breathe in, then blow the soil back to the earth with thanks.",
-      Northern:
-        "🍂 November Portal Spell - Northern\nA short rite to clear the path for deep autumn work.\nElements: Air and Earth\n1) Sweep the air above your crown three times with a dry leaf or feather.\n2) Place a pinch of salt on your palm and say: 'I walk a clear path in quiet night.'\n3) Breathe in, then let the salt fall to the ground with thanks."
-    },
-
-    saturnMoon: {
-      Southern:
-        "🏛️ Saturn Moon Anchor - Southern\nA rite for steady growth and kind limits.\nElements: Earth and Water\n1) Draw a small circle on paper and write one boundary you will keep.\n2) Place a stone and a cup of water on the paper.\n3) Say: 'Stone holds. Water flows. I keep my promise as life grows.'\n4) Sip the water and keep the stone with you for seven days.",
-      Northern:
-        "🏛️ Saturn Moon Anchor - Northern\nA rite for steady rest and clear limits.\nElements: Earth and Water\n1) Draw a small circle on paper and write one boundary you will keep.\n2) Place a stone and a cup of water on the paper.\n3) Say: 'Stone holds. Water flows. I keep my promise as night grows.'\n4) Sip the water and keep the stone with you for seven days."
-    },
-
-    taurids: {
-      Southern:
-        "🌠 Taurid Ember Shield - Southern\nA spark rite for calm strength.\nElements: Fire and Air\n1) Light a small candle and watch one slow breath per flicker.\n2) Trace a circle in the air and say: 'I shine without strain. I move without rush.'\n3) Pinch the flame or snuff it and carry the match as a token.",
-      Northern:
-        "🌠 Taurid Ember Shield - Northern\nA spark rite for quiet courage.\nElements: Fire and Air\n1) Light a small candle and watch one slow breath per flicker.\n2) Trace a circle in the air and say: 'I shine without strain. I rest and remain.'\n3) Pinch the flame or snuff it and carry the match as a token."
-    },
-
-    beaverMoon: {
-      Southern:
-        "🦫 Builder’s Blessing - Southern\nA full moon rite for plans that last.\nElements: Earth and Water\n1) Stack three coins on a jar of water.\n2) Say: 'I build with care. I keep what I can tend.'\n3) Drink a sip and place the coins by your door for one night.",
-      Northern:
-        "🦫 Builder’s Blessing - Northern\nA full moon rite for shelter and store.\nElements: Earth and Water\n1) Stack three coins on a jar of water.\n2) Say: 'I build with care. I keep what I must fend.'\n3) Drink a sip and place the coins by your door for one night."
-    },
-
-    jupiterMoon: {
-      Southern:
-        "⭐ Open Hand Charm - Southern\nA growth rite that stays kind to limits.\nElements: Air and Fire\n1) On a small card write one gift you are ready to share.\n2) Hold it to your heart and say: 'I grow with grace. I keep my pace.'\n3) Place it under a warm light for one hour.",
-      Northern:
-        "⭐ Open Hand Charm - Northern\nA wisdom rite for measured expansion.\nElements: Air and Fire\n1) On a small card write one gift you are ready to share.\n2) Hold it to your heart and say: 'I grow with care. I leave the spare.'\n3) Place it near a lamp for one hour."
-    },
-
-    mmaConjunction: {
-      Southern:
-        "⚔️ Clear Voice Working - Southern\nA speech rite for truth with care.\nElements: Air and Water\n1) Sip water, then speak one truth you have avoided.\n2) Say: 'My voice is clear. My heart stays kind.'\n3) Write one small action and do it within two days.",
-      Northern:
-        "⚔️ Clear Voice Working - Northern\nA speech rite for truth with calm.\nElements: Air and Water\n1) Sip water, then speak one truth you have avoided.\n2) Say: 'My voice is steady. My heart stays warm.'\n3) Write one small action and do it within two days."
-    },
-
-    leonids: {
-      Southern:
-        "💫 Wish Lines Rite - Southern\nA meteor night focus.\nElements: Fire and Air\n1) Draw three short lines on paper for three wishes.\n2) For each line say: 'I choose. I move. I follow the bright.'\n3) Fold the paper and keep it near a window till morning.",
-      Northern:
-        "💫 Wish Lines Rite - Northern\nA meteor night focus.\nElements: Fire and Air\n1) Draw three short lines on paper for three wishes.\n2) For each line say: 'I choose. I hold. I follow the star.'\n3) Fold the paper and keep it near a window till morning."
-    },
-
     microNewMoonScorpio: {
       Southern:
-        "🌑 Southern - Blooming Serpent Spell\nShedding and renewal for spring growth.\nElements: Water and Fire\n1) Candle and dark water bowl.\n2) Salt the water: 'I return to truth.'\n3) Dip a flower, name what you release, return it to soil.\n4) Pour the water to a tree at dawn.",
+        "🌑 **Southern Hemisphere - The Blooming Serpent Spell**\nA ritual for shedding old skins and birthing authentic power as spring matures.\n\nSeasonal Context: Spring is abundant. The Micro New Moon in Scorpio asks for inner renewal before summer expansion.\nMoon Phase: Micro New Moon\nElements: Water and Fire\n\n1) Prepare the Stillness\nLight a candle and gaze into a dark bowl of water.\nSay: 'From light to shadow and back again, I shed what no longer lives within.'\n\n2) Salt Purification\nSprinkle a pinch of salt into the water.\nSay: 'In purity I return to truth, in silence I reclaim my youth.'\n\n3) Serpent Invocation\nHold a fresh flower or leaf and picture the ancient serpent beneath you.\nSay: 'I am the one who blooms and sheds. Through release I reclaim my soul.'\n\n4) Offer Back\nDip the flower in the water and return it to the earth.\nWhisper: 'I give what no longer serves, that I may live in my full curve.'\n\n5) Close\nExtinguish the candle. In the morning pour the water at the base of a tree.",
       Northern:
-        "🌑 Northern - Serpent Shadow Spell\nSurrender and renewal for late autumn.\nElements: Water and Earth\n1) Candle and dark water bowl.\n2) Salt the water: 'I see my core.'\n3) Burn or bury a dry leaf with thanks.\n4) Pour the water to bare earth at dawn."
-    },
-
-    uranusOpposition: {
-      Southern:
-        "🔮 Bright Break Charm - Southern\nA rite to welcome fresh paths without chaos.\nElements: Air and Earth\n1) Place a key on a leaf.\n2) Say: 'I open with care. Change serves my good.'\n3) Carry the key for seven days.",
-      Northern:
-        "🔮 Bright Break Charm - Northern\nA rite to welcome clear change.\nElements: Air and Earth\n1) Place a key on a dry leaf.\n2) Say: 'I open with calm. Change serves my good.'\n3) Carry the key for seven days."
+        "🌑 **Northern Hemisphere - The Serpent's Shadow Spell**\nA ritual for surrender, truth, and regeneration as autumn deepens.\n\nSeasonal Context: The land enters quiet. The Micro New Moon in Scorpio invites honest release before winter.\nMoon Phase: Micro New Moon\nElements: Water and Earth\n\n1) Cast the Quiet\nLight a black candle and reflect its flame in a dark bowl of water.\nSay: 'As the wheel turns towards the night, I shed what dims my sacred light.'\n\n2) Salt of Truth\nDrop salt into the water and stir slowly.\nSay: 'Through water's calm I see my core. I am reborn through what I restore.'\n\n3) Call Renewal\nHold dried leaves or herbs and feel their texture.\nSay: 'I am the one who changes form. Through shadow's gift I come to see.'\n\n4) Lay to Rest\nBurn or bury the leaves with gratitude.\nWhisper: 'With grace I end, with peace I rest. What fades now leaves me blessed.'\n\n5) Close\nExtinguish the candle with wet fingers. Pour the water to bare earth the next day."
     }
   }
 };
+
+const BUILD_TAG = 'MysticMish v2025-11-01b';
 
 export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishProps) {
   const [isVisible, setIsVisible] = useState(false);
@@ -154,39 +100,40 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
   const [showRitual, setShowRitual] = useState(false);
   const [moonPhase, setMoonPhase] = useState(getCurrentMoonPhase());
   const [planetaryPositions, setPlanetaryPositions] = useState<any[]>([]);
-  const [hasAccess, setHasAccess] = useState(true);
+  const [hasAccess, setHasAccess] = useState(true); // soft gate
   const [imageError, setImageError] = useState(false);
 
   const isMounted = useRef(true);
 
-  // Animated values
+  // Persist Animated values across renders
   const floatAnimation = useRef(new Animated.Value(0)).current;
   const sparkleAnimation = useRef(new Animated.Value(0)).current;
   const scaleAnimation = useRef(new Animated.Value(1)).current;
   const wiggleAnimation = useRef(new Animated.Value(0)).current;
 
-  // Date router for November events
-  const pickCosmicRitualIfApplicable = () => {
+  // Pick the full November spell for the MYSTIC MISH TAB, not the popup
+  const getNovemberSpellForTab = (): string | null => {
     const now = new Date();
-    const m = now.getMonth(); // 0 based, 10 is November
-    const d = now.getDate();
-    const hemiKey = hemisphere === 'Southern' ? 'Southern' : 'Northern';
-    if (m !== 10) return null;
+    const isNovember = now.getMonth() === 10; // 0 based
+    const isNov20 = now.getDate() === 20;
 
-    // Nov 1 to 3: opening portal
-    if (d >= 1 && d <= 3) return (RITUALS as any).cosmicNovember.openingPortal[hemiKey];
-
-    // Date specific
-    if (d === 2 || d === 29) return (RITUALS as any).cosmicNovember.saturnMoon[hemiKey];
-    if (d === 4) return (RITUALS as any).cosmicNovember.taurids[hemiKey];
-    if (d === 5) return (RITUALS as any).cosmicNovember.beaverMoon[hemiKey];
-    if (d === 10) return (RITUALS as any).cosmicNovember.jupiterMoon[hemiKey];
-    if (d >= 12 && d <= 17) return (RITUALS as any).cosmicNovember.mmaConjunction[hemiKey];
-    if (d === 17) return (RITUALS as any).cosmicNovember.leonids[hemiKey];
-    if (d === 20) return (RITUALS as any).cosmicNovember.microNewMoonScorpio[hemiKey];
-    if (d === 21) return (RITUALS as any).cosmicNovember.uranusOpposition[hemiKey];
-
+    if (isNovember && isNov20) {
+      const key = hemisphere === 'Southern' ? 'Southern' : 'Northern';
+      const spell = RITUALS.cosmicNovember?.microNewMoonScorpio?.[key];
+      return spell || null;
+    }
     return null;
+  };
+
+  // Teaser text for the little popup only
+  const getTeaserText = (): string => {
+    // Short, month aware, and not Halloween
+    const now = new Date();
+    const isNovember = now.getMonth() === 10;
+    if (isNovember) {
+      return 'November gateway active. Tap Mish to open today’s rite in the Mystic Mish tab.';
+    }
+    return 'Tap Mish for today’s rite in the Mystic Mish tab.';
   };
 
   const checkRitualTime = async () => {
@@ -203,24 +150,32 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
       setPlanetaryPositions([]);
     }
 
-    // Select special November spell if applicable, otherwise default
-    const cosmic = pickCosmicRitualIfApplicable();
+    // Always keep the popup as a teaser only
+    const teaser = getTeaserText();
 
-    const welcomeRitual =
-      'November opens two strong gates: steady work and bright change. Tap Mish to see your rite for today.';
+    // Send the full November spell to the tab if applicable
+    const tabSpell = getNovemberSpellForTab();
+    if (tabSpell && onRitualReveal) {
+      try {
+        onRitualReveal(tabSpell);
+        console.log('[MysticMish] build=', BUILD_TAG, 'sent tab spell for', hemisphere);
+      } catch (e) {
+        console.warn('[MysticMish] onRitualReveal error', e);
+      }
+    } else {
+      console.log('[MysticMish] build=', BUILD_TAG, 'no special tab spell today');
+    }
 
     if (isMounted.current) {
-      setCurrentRitual(cosmic || welcomeRitual);
+      setCurrentRitual(teaser);
       setIsVisible(true);
       startAnimations();
     }
   };
 
   const startAnimations = () => {
-    // Keep iOS light for perf
     if (Platform.OS === 'ios') return;
 
-    // Floating
     Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnimation, { toValue: 1, duration: 3000, useNativeDriver: true }),
@@ -228,12 +183,10 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
       ])
     ).start();
 
-    // Sparkle pulse and rotate
     Animated.loop(
       Animated.timing(sparkleAnimation, { toValue: 1, duration: 2000, useNativeDriver: true })
     ).start();
 
-    // Gentle wiggle
     Animated.loop(
       Animated.sequence([
         Animated.timing(wiggleAnimation, { toValue: 1, duration: 4000, useNativeDriver: true }),
@@ -245,7 +198,6 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
 
   const handleMishTap = () => {
     if (isAnimating) return;
-
     if (isMounted.current) setIsAnimating(true);
 
     Animated.sequence([
@@ -255,7 +207,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
       if (isMounted.current) {
         setIsAnimating(false);
         setShowRitual(true);
-        onRitualReveal?.(currentRitual);
+        onRitualReveal?.(getNovemberSpellForTab() || 'Open the Mystic Mish tab for today’s rite.');
       }
     });
   };
@@ -263,7 +215,6 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
   useEffect(() => {
     isMounted.current = true;
 
-    // Soft subscription check
     const checkAccess = async () => {
       try {
         const { getSubscriptionStatus } = await import('@/utils/billing');
@@ -275,7 +226,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
         }
       } catch (error) {
         console.error('❌ [MysticMish] Access check error:', error);
-        if (isMounted.current) setHasAccess(true);
+        if (isMounted.current) setHasAccess(true); // fail open
       }
     };
 
@@ -337,7 +288,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-      {/* Ritual popup */}
+      {/* Ritual popup - shows teaser only */}
       {showRitual && (
         <View style={styles.ritualPopup} pointerEvents="box-none">
           <LinearGradient
@@ -348,7 +299,7 @@ export default function MysticMish({ onRitualReveal, hemisphere }: MysticMishPro
             <Text style={styles.moonPhaseText}>
               Current Moon: {moonPhase.phase} ({moonPhase.illumination}%)
             </Text>
-            <Text style={styles.ritualText}>{currentRitual}</Text>
+            <Text style={styles.ritualText}>{currentRitual}  •  {BUILD_TAG}</Text>
             <TouchableOpacity style={styles.closeButton} onPress={() => setShowRitual(false)}>
               <Text style={styles.closeButtonText}>Thank you, Mish! 🌟</Text>
             </TouchableOpacity>
