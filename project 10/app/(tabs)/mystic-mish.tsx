@@ -1,3 +1,436 @@
+// apps/tabs/mystic-mish.tsx
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  SafeAreaView,
+  Image,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { Moon, Star, Sparkles, Eye, Scroll as ScrollIcon, Crown } from 'lucide-react-native';
+import CosmicBackground from '../../components/CosmicBackground';
+import CosmicButton from '../../components/CosmicButton';
+import { getCurrentMoonPhase } from '../../utils/astronomy';
+import { getSubscriptionStatus } from '../../utils/billing';
+
+// Fallback for web environment
+if (typeof Platform === 'undefined') {
+  (global as any).Platform = { OS: 'web' };
+}
+
+// ✅ Pre-import the avatar image for better type safety
+const mishAvatar = require('../../assets/images/mystic-mish/headshot.png');
+
+type RitualPayload = { title: string; body: string; version?: string };
+
+// Markers to purge any old Halloween/Samhain content that might be cached
+const HALLOWEEN_MARKERS = [
+  'halloween',
+  'samhain',
+  'veil walker',
+  'pumpkin',
+  'thinning veil',
+];
+
+function stripHalloween(input: string): string {
+  const lines = (input || '').split('\n');
+  const filtered = lines.filter(
+    (line) => !HALLOWEEN_MARKERS.some((m) => line.toLowerCase().includes(m))
+  );
+  return filtered.join('\n').trim();
+}
+
+const BUILD_TAG = 'MysticMishTab v2025-11-01';
+
+export default function MysticMishScreen() {
+  const router = useRouter();
+  const [moonPhase, setMoonPhase] = useState<any>(null);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
+
+  // The live ritual payload shown on this tab
+  const [payload, setPayload] = useState<RitualPayload | null>(null);
+
+  // Tips stay, but content is now driven by payload
+  const tips = [
+    {
+      icon: <Moon size={20} color="#d4af37" />,
+      title: 'Moon Phase Magic',
+      tip: 'New moons set intentions, full moons release and manifest. Waxing grows desires, waning lets go.',
+    },
+    {
+      icon: <Sparkles size={20} color="#8b9dc3" />,
+      title: 'Cusp Power',
+      tip: 'On a cusp you hold dual energies. Work with both signs rulers and elements in your spells.',
+    },
+    {
+      icon: <Star size={20} color="#d4af37" />,
+      title: 'Daily Practice',
+      tip: 'Small daily rituals compound. A candle, an affirmation, or a mindful pause can be real magic.',
+    },
+  ];
+
+  // Hydrate subscription, moon phase, and any cached ritual; attach listener
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        // Subscription
+        const sub = await getSubscriptionStatus();
+        if (!mounted) return;
+        setHasAccess(Boolean(sub?.active));
+
+        // Moon phase
+        const phase = getCurrentMoonPhase();
+        setMoonPhase(phase);
+
+        // Local cached ritual
+        try {
+          if (typeof window !== 'undefined') {
+            const raw = window.localStorage.getItem('mish.ritual');
+            if (raw) {
+              const p = JSON.parse(raw) as RitualPayload;
+              setPayload({
+                title: p.title || 'Mystic Mish',
+                body: stripHalloween(p.body || ''),
+                version: p.version,
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      } catch (err) {
+        console.error('[MysticMishTab] init error:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    // Listen for ritual broadcasts from the Daily page emitter
+    const onMish = (e: Event) => {
+      const detail = (e as CustomEvent).detail as RitualPayload | undefined;
+      if (!detail) return;
+      const clean: RitualPayload = {
+        title: detail.title || 'Mystic Mish',
+        body: stripHalloween(detail.body || ''),
+        version: detail.version,
+      };
+      setPayload(clean);
+      try {
+        window.localStorage.setItem('mish.ritual', JSON.stringify(clean));
+      } catch {
+        // ignore
+      }
+    };
+
+    load();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mish:ritual', onMish as EventListener);
+    }
+
+    return () => {
+      mounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('mish:ritual', onMish as EventListener);
+      }
+    };
+  }, []);
+
+  const handleUpgrade = () => router.push('/subscription');
+
+  // Loading state
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <CosmicBackground />
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#d4af37" />
+            <Text style={styles.loadingText}>Loading mystical wisdom...</Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  // Paywall
+  if (!hasAccess) {
+    return (
+      <View style={styles.container}>
+        <CosmicBackground />
+        <SafeAreaView style={styles.safeArea}>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
+            <View style={styles.headerCenter}>
+              <Text style={styles.title}>Mystic Mish</Text>
+              <Text style={styles.subtitle}>Your Cosmic Guide and Ritual Keeper</Text>
+            </View>
+
+            <LinearGradient
+              colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
+              style={styles.paywallCard}
+            >
+              <View style={styles.paywallHeader}>
+                <Crown size={32} color="#d4af37" />
+                <Text style={styles.paywallTitle}>Unlock Mystic Mish</Text>
+              </View>
+
+              <View style={styles.mishPreviewContainer}>
+                <Image
+                  source={mishAvatar}
+                  style={styles.mishPreviewImage}
+                  resizeMode="cover"
+                  onError={() => setImageError(true)}
+                />
+                {imageError && (
+                  <View style={styles.mishPreviewFallback}>
+                    <Text style={styles.mishEmojiLarge}>🔮</Text>
+                    <Text style={styles.mishNameLarge}>Mish</Text>
+                  </View>
+                )}
+              </View>
+
+              <Text style={styles.paywallDescription}>
+                Access Mishs sacred spells, moon rituals, and cosmic wisdom with Astral Plane.
+              </Text>
+
+              <View style={styles.featuresList}>
+                <View style={styles.featureItem}>
+                  <ScrollIcon size={16} color="#d4af37" />
+                  <Text style={styles.featureText}>Sacred spells and rituals</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <Moon size={16} color="#d4af37" />
+                  <Text style={styles.featureText}>Moon phase guidance</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <Sparkles size={16} color="#d4af37" />
+                  <Text style={styles.featureText}>Cusp specific practices</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <Eye size={16} color="#d4af37" />
+                  <Text style={styles.featureText}>Mystic tips and wisdom</Text>
+                </View>
+              </View>
+
+              <CosmicButton
+                title="Upgrade to Astral Plane"
+                onPress={handleUpgrade}
+                style={styles.upgradeButton}
+              />
+            </LinearGradient>
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  // Fallback content if no ritual was broadcast yet
+  const fallbackTitle = 'November Rite Of Renewal';
+  const fallbackBody =
+    'November gateway active. Open the Daily page and tap Mish to load the full rite here. If you already tapped, hard refresh this tab.';
+
+  const title = payload?.title || fallbackTitle;
+  const body = payload?.body || fallbackBody;
+
+  return (
+    <View style={styles.container}>
+      <CosmicBackground />
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerIcon}>✨</Text>
+            <Text style={styles.headerTitle}>Mystic Mish</Text>
+            <Text style={styles.headerSubtitle}>Your Cosmic Guide and Ritual Keeper</Text>
+          </View>
+
+          {/* Mish Avatar & Welcome */}
+          <LinearGradient
+            colors={['rgba(212, 175, 55, 0.2)', 'rgba(139, 157, 195, 0.1)']}
+            style={styles.welcomeCard}
+          >
+            <View style={styles.mishAvatarContainer}>
+              <Image
+                source={mishAvatar}
+                style={styles.mishAvatar}
+                resizeMode="cover"
+                onError={() => setImageError(true)}
+              />
+              {imageError && (
+                <View style={styles.mishAvatarFallback}>
+                  <Text style={styles.mishEmojiLarge}>🔮</Text>
+                  <Text style={styles.mishNameLarge}>Mish</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.welcomeContent}>
+              <Text style={styles.welcomeTitle}>Welcome, cosmic soul.</Text>
+              <Text style={styles.welcomeText}>
+                This tab now shows the live ritual sent from the Daily page. Tap the little Mish on
+                the Daily screen to broadcast the full spell here.
+              </Text>
+            </View>
+          </LinearGradient>
+
+          {/* Current Moon Message */}
+          <LinearGradient
+            colors={['rgba(139, 157, 195, 0.25)', 'rgba(75, 0, 130, 0.15)']}
+            style={styles.moonMessageCard}
+          >
+            <View style={styles.moonHeader}>
+              <Moon size={24} color="#d4af37" />
+              <Text style={styles.moonTitle}>Seasonal Focus</Text>
+            </View>
+
+            {moonPhase && (
+              <Text style={styles.moonPhaseText}>
+                Current Moon: {moonPhase.phase} ({moonPhase.illumination}% illuminated)
+              </Text>
+            )}
+
+            <Text style={styles.moonMessage}>
+              November magic is active. Open the Daily page and tap Mish to reveal the rite here.
+            </Text>
+          </LinearGradient>
+
+          {/* Live Ritual Card */}
+          <View style={styles.spellsSection}>
+            <Text style={styles.sectionTitle}>Todays Featured Rite</Text>
+
+            <LinearGradient
+              colors={['rgba(212, 175, 55, 0.2)', 'rgba(212, 175, 55, 0.1)']}
+              style={styles.spellCard}
+            >
+              <View style={styles.spellHeader}>
+                <ScrollIcon size={20} color="#d4af37" />
+                <Text style={styles.spellTitle}>{title}</Text>
+              </View>
+
+              {payload?.version ? (
+                <Text style={styles.version}>Build {payload.version} • {BUILD_TAG}</Text>
+              ) : (
+                <Text style={styles.version}>{BUILD_TAG}</Text>
+              )}
+
+              <View style={styles.fullSpellContainer}>
+                <Text style={styles.fullSpellText}>{body}</Text>
+              </View>
+            </LinearGradient>
+          </View>
+
+          {/* Tips */}
+          <View style={styles.tipsSection}>
+            <Text style={styles.sectionTitle}>Mishs Cosmic Tips</Text>
+
+            {tips.map((tip) => (
+              <LinearGradient
+                key={tip.title}
+                colors={['rgba(139, 157, 195, 0.15)', 'rgba(139, 157, 195, 0.05)']}
+                style={styles.tipCard}
+              >
+                <View style={styles.tipHeader}>
+                  {tip.icon}
+                  <Text style={styles.tipTitle}>{tip.title}</Text>
+                </View>
+                <Text style={styles.tipText}>{tip.tip}</Text>
+              </LinearGradient>
+            ))}
+          </View>
+
+          {/* Wisdom */}
+          <LinearGradient
+            colors={['rgba(212, 175, 55, 0.2)', 'rgba(139, 157, 195, 0.1)']}
+            style={styles.wisdomCard}
+          >
+            <View style={styles.wisdomHeader}>
+              <Eye size={24} color="#d4af37" />
+              <Text style={styles.wisdomTitle}>Mishs Final Wisdom</Text>
+            </View>
+            <Text style={styles.wisdomText}>
+              Magic is intention, attention, and courage. Keep it simple, keep it honest, and keep it
+              yours.
+            </Text>
+            <Text style={styles.wisdomSignature}>Mystic Mish ✨</Text>
+          </LinearGradient>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
+
+  headerCenter: { alignItems: 'center', paddingTop: 20, paddingBottom: 24 },
+  headerIcon: { fontSize: 48, marginBottom: 6, color: '#d4af37' },
+  headerTitle: { fontSize: 26, color: '#e8e8e8', fontFamily: 'Vazirmatn-Bold', textAlign: 'center' },
+  headerSubtitle: { marginTop: 4, color: '#8b9dc3', fontSize: 16, fontFamily: 'Vazirmatn-Regular', textAlign: 'center' },
+
+  welcomeCard: { borderRadius: 16, padding: 24, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)', flexDirection: 'row', alignItems: 'center' },
+  mishAvatarContainer: { position: 'relative', width: 80, height: 95, marginRight: 20, borderRadius: 18, overflow: 'hidden', borderWidth: 2, borderColor: '#d4af37' },
+  mishAvatar: { width: '100%', height: '100%', borderRadius: 18 },
+  mishAvatarFallback: { position: 'absolute', inset: 0, backgroundColor: 'rgba(139, 157, 195, 0.1)', alignItems: 'center', justifyContent: 'center' },
+  mishEmojiLarge: { fontSize: 60, marginBottom: 8 },
+  mishNameLarge: { fontSize: 14, fontFamily: 'Inter-SemiBold', color: '#FFD700', textAlign: 'center' },
+  welcomeContent: { flex: 1 },
+  welcomeTitle: { fontSize: 22, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginBottom: 8 },
+  welcomeText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20 },
+
+  moonMessageCard: { borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 2, borderColor: '#FFD700' },
+  moonHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  moonTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginLeft: 8 },
+  moonPhaseText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#FFD700', textAlign: 'center', marginBottom: 12 },
+  moonMessage: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#FFD700', textAlign: 'center' },
+
+  spellsSection: { marginBottom: 32 },
+  sectionTitle: { fontSize: 28, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', textAlign: 'center', marginBottom: 20 },
+  spellCard: { borderRadius: 16, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)' },
+  spellHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  spellTitle: { fontSize: 20, fontFamily: 'PlayfairDisplay-Bold', color: '#e8e8e8', marginLeft: 8 },
+  version: { fontSize: 11, color: '#cfcfcf', textAlign: 'center', marginBottom: 10 },
+  fullSpellContainer: { backgroundColor: 'rgba(26, 26, 46, 0.4)', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.2)' },
+  fullSpellText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20, fontStyle: 'italic' },
+
+  tipsSection: { marginBottom: 32 },
+  tipCard: { borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(139, 157, 195, 0.3)' },
+  tipHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  tipTitle: { fontSize: 18, fontFamily: 'Inter-SemiBold', color: '#e8e8e8', marginLeft: 8 },
+  tipText: { fontSize: 16, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 20 },
+
+  wisdomCard: { borderRadius: 16, padding: 24, borderWidth: 2, borderColor: 'rgba(212, 175, 55, 0.4)' },
+  wisdomHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  wisdomTitle: { fontSize: 22, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginLeft: 8 },
+  wisdomText: { fontSize: 18, fontFamily: 'Inter-Regular', color: '#e8e8e8', lineHeight: 24, textAlign: 'center', fontStyle: 'italic', marginBottom: 12 },
+  wisdomSignature: { fontSize: 16, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', textAlign: 'center' },
+
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { fontSize: 18, fontFamily: 'Inter-Regular', color: '#8b9dc3', marginTop: 12 },
+
+  paywallCard: { borderRadius: 16, padding: 24, marginTop: 40, borderWidth: 1, borderColor: 'rgba(212, 175, 55, 0.3)', alignItems: 'center' },
+  paywallHeader: { alignItems: 'center', marginBottom: 24 },
+  paywallTitle: { fontSize: 32, fontFamily: 'PlayfairDisplay-Bold', color: '#d4af37', marginTop: 12, textAlign: 'center', marginBottom: 16,
+    ...Platform.select({ web: { textShadow: '1px 1px 2px #4B0082' }, default: { textShadowColor: '#4B0082', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 } }),
+  },
+  mishPreviewContainer: { alignItems: 'center', marginBottom: 24, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: '#d4af37', width: 100, height: 120 },
+  mishPreviewImage: { width: '100%', height: '100%' },
+  mishPreviewFallback: { position: 'absolute', inset: 0, backgroundColor: 'rgba(139, 157, 195, 0.1)', alignItems: 'center', justifyContent: 'center' },
+  paywallDescription: { fontSize: 20, fontFamily: 'Vazirmatn-Regular', color: '#e8e8e8', textAlign: 'center', lineHeight: 26, marginBottom: 24 },
+  featuresList: { gap: 12, marginBottom: 32, width: '100%' },
+  featureItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  featureText: { fontSize: 18, fontFamily: 'Vazirmatn-Medium', color: '#e8e8e8', marginLeft: 12 },
+  upgradeButton: { minWidth: 200 },
+});
 import React, { useState, useEffect } from 'react';
 import {
   View,

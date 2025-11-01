@@ -18,13 +18,15 @@ export type DailyRow = {
   [key: string]: any;
 };
 
-// ----- String helpers -----
+// =============================================================================
+// String helpers
+// =============================================================================
 function toTitleCaseWord(w: string) {
   return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
 }
 
 function normalizeDashesToHyphen(s: string) {
-  return (s || '').replace(/[\u2012\u2013\u2014\u2015]/g, '-'); // figure/en/em dashes -> hyphen
+  return (s || '').replace(/[\u2012\u2013\u2014\u2015]/g, '-'); // all figure/en/em dashes -> hyphen
 }
 
 function squashSpaces(s: string) {
@@ -35,10 +37,10 @@ function stripTrailingCusp(s: string) {
   return s.replace(/\s*cusp\s*$/i, '').trim();
 }
 
-/** A strict, display-friendly normalization (keeps title case and en–dash) */
+/** A strict, display-friendly normalization (keeps title case and displays en–dash style as hyphen-free text) */
 function normalizeSignForDaily(input: string): {
-  primaryWithCusp?: string;   // "Aries–Taurus Cusp"
-  primaryNoCusp: string;      // "Aries–Taurus" or "Aries"
+  primaryWithCusp?: string;   // "Aries-Taurus Cusp" (we avoid en dash in user content)
+  primaryNoCusp: string;      // "Aries-Taurus" or "Aries"
   parts: string[];
   isCusp: boolean;
 } {
@@ -60,9 +62,10 @@ function normalizeSignForDaily(input: string): {
     )
     .filter(Boolean);
 
-  const baseEnDash = parts.join('–'); // for display
-  const primaryNoCusp = baseEnDash;
-  const primaryWithCusp = isCusp ? `${baseEnDash} Cusp` : undefined;
+  // Display with a simple hyphen (user does not want em dashes)
+  const base = parts.join('-');
+  const primaryNoCusp = base;
+  const primaryWithCusp = isCusp ? `${base} Cusp` : undefined;
 
   return { primaryWithCusp, primaryNoCusp, parts, isCusp };
 }
@@ -85,32 +88,56 @@ function buildSignAttemptsForDaily(
   const allowFallback = !!opts?.allowTrueSignFallback;
 
   const list: string[] = [];
-  if (primaryWithCusp) list.push(primaryWithCusp);                    // en–dash + "Cusp"
-  if (primaryWithCusp) list.push(primaryWithCusp.replace(/–/g, '-')); // hyphen + "Cusp"
-  if (primaryNoCusp) list.push(primaryNoCusp);                         // en–dash no cusp
-  if (primaryNoCusp) list.push(primaryNoCusp.replace(/–/g, '-'));     // hyphen no cusp
+  if (primaryWithCusp) list.push(primaryWithCusp);           // hyphen + "Cusp"
+  if (primaryNoCusp) list.push(primaryNoCusp);               // hyphen no cusp
 
   if (!isCusp || allowFallback) {
-    for (const p of parts) if (p) list.push(p);                       // fallback to each sign if allowed
+    for (const p of parts) if (p) list.push(p);              // fallback to each sign if allowed
   }
   return [...new Set(list)].filter(Boolean);
 }
 
-// Hemisphere normalisation to match DB ("Northern"/"Southern")
+// =============================================================================
+// Halloween/Samhain scrubbers (defensive, so stale copy never shows again)
+// =============================================================================
+const HALLOWEEN_MARKERS = [
+  'halloween',
+  'samhain',
+  'veil walker',
+  'pumpkin',
+  'thinning veil',
+];
+
+function stripHalloweenLines(text: string): string {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const keep = lines.filter(
+    line => !HALLOWEEN_MARKERS.some(m => line.toLowerCase().includes(m))
+  );
+  return keep.join('\n').trim();
+}
+
+function sanitizeUserFacingText(s: string): string {
+  // 1) remove em/en dashes, 2) trim, 3) purge halloween lines
+  const noFancyDash = normalizeDashesToHyphen(s);
+  return stripHalloweenLines(noFancyDash).trim();
+}
+
+// =============================================================================
+// Hemisphere + Date helpers
+// =============================================================================
 function hemiToDB(hemi?: HemiAny): 'Northern' | 'Southern' {
   const v = (hemi || 'Southern').toString().toLowerCase();
   if (v === 'northern' || v === 'nh') return 'Northern';
   return 'Southern';
 }
 
-// ----- Date helpers (timezone-safe, no string parsing!) -----
 function pad2(n: number) {
   return `${n}`.padStart(2, '0');
 }
 
 /**
  * Return YYYY-MM-DD for a given Date in the given IANA time zone.
- * We DO NOT parse locale strings (which causes MM/DD vs DD/MM confusion).
  */
 function ymdInTZ(d: Date, timeZone: string): string {
   const y = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' }).format(d);
@@ -129,7 +156,7 @@ function getUserTimeZone(): string {
   }
 }
 
-// Legacy helpers (still used in logs/fallbacks)
+// Legacy anchors
 function anchorLocal(d = new Date()) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
@@ -149,9 +176,8 @@ function buildDailyAnchors(d = new Date()): string[] {
   const tomorrowUser = ymdInTZ(new Date(d.getTime() + 24 * 60 * 60 * 1000), userTZ);
 
   const todayUTC = anchorUTC(d);
-  const todayLocal = anchorLocal(d); // device clock (rarely needed, but harmless)
+  const todayLocal = anchorLocal(d); // device clock
 
-  // order matters: userTZ first
   const anchors = [
     todayUser,
     todayUTC,
@@ -163,9 +189,11 @@ function buildDailyAnchors(d = new Date()): string[] {
   return [...new Set(anchors)].filter(Boolean);
 }
 
-// ----- Cache helpers -----
+// =============================================================================
+// Cache helpers
+// =============================================================================
 // BUMP VERSION to invalidate old localStorage keys that caused stale content.
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3'; // bumped
 
 function cacheKeyDaily(
   userId: string | undefined,
@@ -213,9 +241,9 @@ function rowMatchesSign(rowSign: string, candidate: string) {
   );
 }
 
-// ------------------------
+// =============================================================================
 // DB fetchers
-// ------------------------
+// =============================================================================
 
 /** Fetch all rows for a given date+hemi; we’ll match the sign client-side. */
 async function fetchRowsForDate(
@@ -252,9 +280,9 @@ async function fetchRowsForDate(
   return { rows, error: null };
 }
 
-// ============================================================================
+// =============================================================================
 // PUBLIC API
-// ============================================================================
+// =============================================================================
 
 export async function getDailyForecast(
   signIn: string,
@@ -272,7 +300,7 @@ export async function getDailyForecast(
   const hemi = hemiToDB(hemisphereIn);
 
   const today = new Date();
-  const anchors = opts?.forceDate ? [opts.forceDate] : buildDailyAnchors(today);
+  const anchors = opts?.forceDate ? [opts?.forceDate] : buildDailyAnchors(today);
 
   const signAttempts = buildSignAttemptsForDaily(signIn, {
     allowTrueSignFallback: !!opts?.allowTrueSignFallback,
@@ -298,13 +326,17 @@ export async function getDailyForecast(
         const cached = getFromCache<DailyRow>(key);
         if (cached && cached.date === dateStr && cached.hemisphere === hemi && cached.sign === s) {
           if (debug) console.log('💾 [daily] cache hit', { key, sign: s, hemi, date: dateStr, source: cached.__source_table__ });
+          // scrub cached content just in case
+          cached.daily_horoscope = sanitizeUserFacingText(cached.daily_horoscope || '');
+          cached.affirmation = sanitizeUserFacingText(cached.affirmation || '');
+          cached.deeper_insight = sanitizeUserFacingText(cached.deeper_insight || '');
           return cached;
         }
       }
     }
   }
 
-  // DB tries: pull all rows for date+hemi, then match sign locally (handles dash/case/cusp).
+  // DB tries: pull all rows for date+hemi, then match sign locally
   for (const dateStr of anchors) {
     if (debug) console.log(`[daily] Fetching list for date="${dateStr}", hemisphere="${hemi}"`);
     const { rows, error } = await fetchRowsForDate(dateStr, hemi, debug);
@@ -318,20 +350,29 @@ export async function getDailyForecast(
     for (const cand of signAttempts) {
       const match = rows.find(r => rowMatchesSign(r.sign, cand));
       if (match) {
-        const key = cacheKeyDaily(userId, match.sign, hemi, dateStr);
-        setInCache(key, match);
+        // sanitize before caching and returning
+        const clean: DailyRow = {
+          ...match,
+          daily_horoscope: sanitizeUserFacingText(match.daily_horoscope || ''),
+          affirmation: sanitizeUserFacingText(match.affirmation || ''),
+          deeper_insight: sanitizeUserFacingText(match.deeper_insight || ''),
+        };
+
+        const key = cacheKeyDaily(userId, clean.sign, hemi, dateStr);
+        setInCache(key, clean);
+
         if (debug) {
           console.log(`[daily] ✅ MATCH`, {
             wanted: cand,
-            matchedRowSign: match.sign,
+            matchedRowSign: clean.sign,
             hemi,
             date: dateStr,
-            hasDaily: !!match.daily_horoscope,
-            hasAff: !!match.affirmation,
-            hasDeep: !!match.deeper_insight,
+            hasDaily: !!clean.daily_horoscope,
+            hasAff: !!clean.affirmation,
+            hasDeep: !!clean.deeper_insight,
           });
         }
-        return match;
+        return clean;
       }
     }
 
@@ -368,22 +409,61 @@ export async function getAccessibleHoroscope(user: any, opts?: {
   const row = await getDailyForecast(signLabel, hemisphere, {
     userId: user?.id || user?.email,
     forceDate: opts?.forceDate,
-    useCache: false,     // TEMP: force fresh DB read so we bypass stale localStorage
-    debug: true,         // TEMP: keep logs visible while verifying
+    useCache: false,     // keep fresh to avoid stale cache
+    debug: true,         // keep logs visible while verifying
     allowTrueSignFallback: !isCuspInput ? true : false,
   });
 
   if (!row) return null;
 
+  // Final defensive scrub on the way out
   return {
     date: row.date,
     sign: row.sign,
     hemisphere: row.hemisphere,
-    daily: row.daily_horoscope || '',
-    affirmation: row.affirmation || '',
-    deeper: row.deeper_insight || '',
+    daily: sanitizeUserFacingText(row.daily_horoscope || ''),
+    affirmation: sanitizeUserFacingText(row.affirmation || ''),
+    deeper: sanitizeUserFacingText(row.deeper_insight || ''),
     raw: row,
   };
+}
+
+// =============================================================================
+// Optional tiny Mish helpers (safe to ignore if unused)
+// =============================================================================
+
+/** Clear any spooky cached Mish payloads created earlier, if present. */
+export function clearMysticMishArtifacts() {
+  if (typeof window === 'undefined') return;
+  const candidates = [
+    'mish.ritual',
+    'mish.ritual.current',
+    'mysticMish.tabRitual',
+    'cusp_ritual_cache',
+    'ritual_text',
+  ];
+  try {
+    for (const k of candidates) {
+      const v = window.localStorage.getItem(k) || '';
+      if (HALLOWEEN_MARKERS.some(m => v.toLowerCase().includes(m))) {
+        window.localStorage.removeItem(k);
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+/** Broadcast a neutral November notice to the Mish tab, if you ever want to from here. */
+export function broadcastMishNotice(message = 'November gateway active. Tap Mish on the Daily page to load todays rite here.') {
+  if (typeof window === 'undefined') return;
+  const payload = { title: 'Mystic Mish', body: sanitizeUserFacingText(message), version: 'daily-utils' };
+  try {
+    window.localStorage.setItem('mish.ritual', JSON.stringify(payload));
+    window.dispatchEvent(new CustomEvent('mish:ritual', { detail: payload }));
+  } catch {
+    // ignore
+  }
 }
 
 export const DailyHelpers = {
